@@ -1,0 +1,119 @@
+body {
+    margin:0; 
+    padding:0;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
+h4 {
+    margin:0;
+    padding:0;
+    line-height:1;
+}
+#chart {
+    margin-top:10px;
+    padding:0;
+}
+
+#chart2-container {
+    display:inline-block;
+    vertical-align:top;
+    margin-left:40px; /* chart3 to the right of chart 1 */
+}
+
+.line {
+    fill: none;
+    stroke: black;
+    stroke-width: 2;
+}
+
+.prism {
+    fill: #B0C4DE;
+    stroke: #B0C4DE;
+    opacity: 0.7;
+    transition: stroke 0.2s, stroke-width 0.2s;
+}
+.prism:hover {
+    cursor: pointer;
+    stroke: #000;
+    stroke-width: 2;
+}
+
+.connector-area {
+    fill: lightgray;
+    opacity: 0.5;
+}
+.connector-line {
+    stroke: gray;
+    stroke-width: 2;
+}
+
+.ref-line {
+    stroke: #999;
+    stroke-width: 1;
+    stroke-dasharray: 2,2;
+}
+.ref-connector-area {
+    fill: #ccc;
+    opacity: 0.3;
+}
+.ref-connector-line {
+    stroke: #999;
+    stroke-width: 1;
+    stroke-dasharray: 2,2;
+}
+
+.x-axis-line {
+    stroke: black;
+    stroke-width: 1;
+}
+
+.tick-line {
+    stroke: #333;
+    stroke-width: 1;
+}
+
+.tick-label {
+    fill: #333;
+    font-size: 14px;
+}
+
+.bar {
+    fill: steelblue;
+    opacity: 0.7;
+}
+.bar.highlighted {
+    fill: darkorange;
+}
+.bar:hover {
+    opacity:1;
+    stroke:#000;
+}
+
+.ref-text {
+    fill: #333;
+    font-size: 12px;
+}
+
+/* Brush styles */
+.selection {
+    fill: rgba(70,130,180,0.3); /* highlight color */
+    stroke: #4682B4;
+    stroke-width: 1;
+}
+
+.handle {
+    fill: #fff;
+    stroke: #4682B4;
+    cursor: ew-resize;
+}
+
+.brush3 .selection {
+    fill: rgba(255,165,0,0.3);
+    stroke: orange;
+}
+.brush3 .handle {
+    fill: #fff;
+    stroke: orange;
+}
