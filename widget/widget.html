@@ -25,7 +25,6 @@
     <figcaption>Gaussian (salary in France)</figcaption>
     <div id="chart2"></div>
   </figure>
-  <script type="module" src="widget.js"></script>
   <script type="module">
     import * as d3 from "d3";
     import BarChartMagnitude from './widget.js'
@@ -46,9 +45,9 @@
 
     const barChartMagnitude = BarChartMagnitude({
       data: randomSalary,
-      domains: [100_000, 1_000_000], // divide x axis on 100K and 1M
-      xBins: [.25, .65], // in percent on the x axis, the position of domain separators
-      binSize: [5000, 50_000, 3_450_000] // size of bin for each division
+      domains: [300_000, 5_000_000, 10_000_000], // divide x axis on 100K and 1M
+      xBins: [.25, .55, .75], // in percent on the x axis, the position of domain separators
+      binSize: [10_000, 200_000, 500_000, 5_000_000] // size of bin for each division
       // y: (binData, i) => {
       //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
       //   return d3.scaleLinear().domain([0, max])
