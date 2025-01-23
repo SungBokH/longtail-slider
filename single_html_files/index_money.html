@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Distribution Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .charts {
+            display: flex;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .axis path,
+        .axis line {
+            fill: none;
+            shape-rendering: crispEdges;
+        }
+        #histogram2 .x-axis text {
+            fill: blue; /* Color for x-axis ticks of the right chart */
+        }
+    </style>
+</head>
+<body>
+    <h1>Pareto Distribution Visualization</h1>
+    <div class="charts">
+        <svg id="histogram1" width="600" height="400" style="margin-right: -35px;"></svg>
+        <svg id="histogram2" width="600" height="400" style="margin-left: -45px;"></svg>
+    </div>
+
+    <script>
+        // Pareto Distribution Parameters
+        const numSamples = 100000;
+        const min = 28000; // Minimum value
+        const max = 8700000; // Maximum value
+        const avg = 67000; // Average value
+        const median = 57000; // Median value
+
+        // Estimated shape parameter (alpha)
+        const alpha = 1.2; // Fine-tuned to approximate average and median
+
+        // Generate Pareto samples
+        function generateParetoSample(alpha, xm) {
+            return xm / Math.pow(Math.random(), 1 / alpha);
+        }
+
+        const samples = Array.from({ length: numSamples }, () => {
+            let value;
+            do {
+                value = generateParetoSample(alpha, min);
+            } while (value > max);
+            return value;
+        }).sort((a, b) => a - b);
+
+        // Function to create a histogram
+        function createHistogram(svgId, bins, xLabel, yLabel, xDomainStart, xDomainEnd, barColor, yAxisPosition = "left") {
+            const svg = d3.select(svgId);
+            const width = +svg.attr("width");
+            const height = +svg.attr("height");
+            const margin = { top: 20, right: 60, bottom: 50, left: yAxisPosition === "left" ? 70 : 20 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+
+            const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Define scales
+            const xScale = d3.scaleLinear()
+                .domain([xDomainStart, xDomainEnd])
+                .range([0, chartWidth]);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(bins, d => d.avgValue)])
+                .range([chartHeight, 0]);
+
+            // Axes
+            const xAxis = d3.axisBottom(xScale).tickFormat(d => `${d}%`);
+            const yAxis = yAxisPosition === "left" ? d3.axisLeft(yScale) : d3.axisRight(yScale);
+
+            g.append("g")
+                .attr("class", "x-axis") // Add class for x-axis to style the ticks
+                .attr("transform", `translate(0,${chartHeight})`)
+                .call(xAxis);
+
+            if (yAxisPosition === "left") {
+                g.append("g").call(yAxis);
+            } else if (yAxisPosition === "right") {
+                g.append("g")
+                    .attr("transform", `translate(${chartWidth},0)`)
+                    .call(yAxis);
+            }
+
+            // Draw bars
+            g.selectAll(".bar")
+                .data(bins)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => xScale(d.binStart))
+                .attr("y", d => yScale(d.avgValue))
+                .attr("width", d => xScale(d.binEnd) - xScale(d.binStart) - 1)
+                .attr("height", d => chartHeight - yScale(d.avgValue))
+                .attr("fill", barColor);
+
+            // Labels
+            g.append("text")
+                .attr("x", chartWidth / 2)
+                .attr("y", chartHeight + margin.bottom - 10)
+                .attr("text-anchor", "middle")
+                .text(xLabel);
+
+            if (yAxisPosition === "left") {
+                g.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("x", -chartHeight / 2)
+                    .attr("y", -margin.left + 15)
+                    .attr("text-anchor", "middle")
+                    .text(yLabel);
+            }
+        }
+
+        // Create bins for the 0% to 90% population (1% increments)
+        const bins1 = [];
+        const binSize1 = 0.01; // 1% increments
+        for (let i = 0; i < 0.9; i += binSize1) {
+            const startIndex = Math.floor(i * numSamples);
+            const endIndex = Math.floor((i + binSize1) * numSamples);
+            const binSamples = samples.slice(startIndex, endIndex);
+            const avgValue = d3.mean(binSamples) || 0;
+            bins1.push({ binStart: i * 100, binEnd: (i + binSize1) * 100, avgValue });
+        }
+
+        // Create bins for the 90% to 100% population (0.1% increments)
+        const bins2 = [];
+        const binSize2 = 0.001; // 0.1% increments
+        for (let i = 0.9; i < 1; i += binSize2) {
+            const startIndex = Math.floor(i * numSamples);
+            const endIndex = Math.floor((i + binSize2) * numSamples);
+            const binSamples = samples.slice(startIndex, endIndex);
+            const avgValue = d3.mean(binSamples) || 0;
+            bins2.push({ binStart: i * 100, binEnd: (i + binSize2) * 100, avgValue });
+        }
+
+        // Create the first histogram
+        createHistogram("#histogram1", bins1, "Population (%)", "Average Dollars ($)", 0, 90, "steelblue", "left");
+
+        // Create the second histogram
+        createHistogram("#histogram2", bins2, "Population (%)", "Average Dollars ($)", 90, 100, "#8B4513", "right");
+    </script>
+</body>
+</html>

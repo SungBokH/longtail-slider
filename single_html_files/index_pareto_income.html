@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Income Histogram with Two Brushes</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex; /* Arrange children in a row */
+            justify-content: center; /* Center charts horizontally */
+            gap: 20px; /* Add space between charts */
+        }
+        .chart {
+            margin: 0; /* Remove unnecessary margins */
+        }
+        .brush .selection {
+            fill: rgba(70, 130, 180, 0.4); /* Semi-transparent blue */
+            stroke: #4682B4; /* SteelBlue */
+            stroke-width: 2;
+        }
+        .highlight {
+            fill: orange !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pareto Income Distribution with Two Brushes</h1>
+    <div class="container">
+        <div id="chart" class="chart"></div>
+        <div id="chart2" class="chart"></div>
+    </div>
+    <script>
+        // Parameters
+        const sampleSize = 100000;
+        const minSalary = 2000;
+        const maxSalary = 5000000;
+        const averageSalary = 52000;
+
+        const alpha = 2.14;
+
+        // Generate Pareto income data
+        const incomeData = [];
+        for (let i = 0; i < sampleSize; i++) {
+            let r = Math.random();
+            let salary = minSalary / Math.pow(1 - r, 1 / alpha);
+            salary = Math.min(salary, maxSalary);
+            incomeData.push(salary);
+        }
+
+        const currentAverage = incomeData.reduce((sum, d) => sum + d, 0) / sampleSize;
+        const scalingFactor = averageSalary / currentAverage;
+        const scaledIncomeData = incomeData.map(d => d * scalingFactor);
+
+        scaledIncomeData.sort((a, b) => a - b);
+
+        // First chart: 1% bins, range (0–90%)
+        const percentiles1 = [];
+        for (let i = 0; i < 90; i++) {
+            const startIdx = Math.floor((i / 100) * sampleSize);
+            const endIdx = Math.floor(((i + 1) / 100) * sampleSize);
+            const binData = scaledIncomeData.slice(startIdx, endIdx);
+            const averageSalary = binData.reduce((sum, d) => sum + d, 0) / binData.length;
+            percentiles1.push({ percentile: i + 1, averageSalary });
+        }
+
+        // Second chart: 0.1% bins, range (90–100%)
+        const percentiles2 = [];
+        const startPercentile = 90;
+        const binStep = 0.1;
+        const binCount = (100 - startPercentile) / binStep;
+
+        for (let i = 0; i < binCount; i++) {
+            const lowerPercentile = startPercentile + i * binStep;
+            const upperPercentile = lowerPercentile + binStep;
+            const startIdx = Math.floor((lowerPercentile / 100) * sampleSize);
+            const endIdx = Math.floor((upperPercentile / 100) * sampleSize);
+            const binData = scaledIncomeData.slice(startIdx, endIdx);
+            const averageSalary = binData.reduce((sum, d) => sum + d, 0) / binData.length;
+            percentiles2.push({ percentile: lowerPercentile, averageSalary });
+        }
+
+        const width = 400;
+        const height = 300;
+        const margin = { top: 10, right: 15, bottom: 25, left: 35 };
+
+        // Function to create a chart
+        function createChart(containerId, data, xDomain, xStep, xLabel, xTickCount, yTickCount) {
+            const svg = d3.select(containerId)
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom);
+
+            const chart = svg.append("g")
+                .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+            const x = d3.scaleLinear()
+                .domain(xDomain)
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.averageSalary)])
+                .nice()
+                .range([height, 0]);
+
+            chart.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => `${d}%`).ticks(xTickCount))
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", 20)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .style("font-size", "10px")
+                .text(xLabel);
+
+            chart.append("g")
+                .call(d3.axisLeft(y).tickFormat(d3.format("$.2s")).ticks(yTickCount))
+                .append("text")
+                .attr("x", -height / 2)
+                .attr("y", -25)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .style("font-size", "10px")
+                .text("Average Salary (€)");
+
+            const bars = chart.selectAll(".bar")
+                .data(data)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.percentile))
+                .attr("width", x(xStep) - x(0) - 1)
+                .attr("y", d => y(d.averageSalary))
+                .attr("height", d => height - y(d.averageSalary))
+                .attr("fill", "steelblue");
+
+            const brushHeight = 15;
+            const brush = d3.brushX()
+                .extent([[0, 0], [width, brushHeight]])
+                .on("brush end", function (event) {
+                    const selection = event.selection;
+                    if (selection) {
+                        const [x0, x1] = selection.map(x.invert);
+                        const selectedBars = data.filter(d => d.percentile >= x0 && d.percentile <= x1);
+                        bars.attr("class", d => (d.percentile >= x0 && d.percentile <= x1) ? "bar highlight" : "bar")
+                            .attr("fill", d => (d.percentile >= x0 && d.percentile <= x1) ? "orange" : "steelblue");
+                        console.log("Selected Data:", selectedBars);
+                    } else {
+                        bars.attr("fill", "steelblue");
+                    }
+                });
+
+            svg.append("g")
+                .attr("class", "brush")
+                .attr("transform", `translate(${margin.left}, ${height + margin.top + 20})`)
+                .call(brush);
+        }
+
+        // Create the first chart: range (0–90%)
+        createChart("#chart", percentiles1, [0, 90], 1, "Population Percentile", 10, 5);
+
+        // Create the second chart: detailed range (90–100%)
+        createChart("#chart2", percentiles2, [90, 100], 0.1, "Population Percentile (Zoomed)", 10, 5);
+    </script>
+</body>
+</html>

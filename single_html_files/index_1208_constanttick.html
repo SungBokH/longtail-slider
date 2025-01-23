@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Distribution with Draggable Prism</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .line {
+            fill: none;
+            stroke: #4B5366;
+            stroke-width: 2;
+        }
+        .prism {
+            opacity: 0.3;
+            fill: #B0C4DE;
+            stroke: #B0C4DE;
+        }
+        .connector {
+            stroke: silver;
+            stroke-width: 2;
+            fill: none;
+        }
+        .tick-line {
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .tick-label {
+            fill: #333;
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h4>Pareto Distribution</h4>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins
+        const scaleFactor = 0.7;
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 60 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor;
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Total available width for both charts
+        const availableWidth = width - blankSpace;
+
+        // Data for top 10% and bottom 90%
+        const topWealth = 500000; 
+        const bottomMaxWealth = 45000;
+        const bottomMinWealth = 1000;
+
+        const wealthTop10 = d3.range(0, 10).map(i => ({
+            x: i,
+            y: topWealth * Math.pow(0.85, i)
+        }));
+
+        const wealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: bottomMaxWealth * Math.pow(0.85, (i - 10) / 10) + bottomMinWealth * Math.pow(0.15, (i - 10) / 10)
+        }));
+
+        // Y scales for top and bottom
+        const yScaleTop = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop10, d => d.y)])
+            .range([height, 0]);
+
+        const yScaleBottom = d3.scaleLinear()
+            .domain([0, d3.max(wealthBottom90, d => d.y)])
+            .range([height, 0]);
+
+        // Initial prism (divider) position
+        const rectWidth = 20 * scaleFactor, rectHeight = 145 * scaleFactor;
+        let rectX = (availableWidth / 2) - (rectWidth / 2); 
+        const rectY = (height - rectHeight) / 2;
+
+        let xScaleTop, xScaleBottom;
+        let lineTop, lineBottom;
+
+        const topLinePath = g.append("path")
+            .datum(wealthTop10)
+            .attr("class", "line");
+
+        const bottomLinePath = g.append("path")
+            .datum(wealthBottom90)
+            .attr("class", "line");
+
+        const connectorLine = g.append("line")
+            .attr("class", "connector");
+
+        // Groups for ticks
+        const topYTicksGroup = g.append("g");
+        const bottomYTicksGroup = g.append("g");
+        const topXTicksGroup = g.append("g");
+        const bottomXTicksGroup = g.append("g");
+
+        function updateCharts() {
+            // Redefine scales so x=10 maps to the center of the prism
+            // Center of prism = rectX + rectWidth/2
+            // Top chart domain: [0,10], range: [0, rectX + rectWidth/2]
+            xScaleTop = d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, rectX + rectWidth/2]);
+
+            // Bottom chart domain: [10,100], range: [rectX + rectWidth/2, availableWidth]
+            xScaleBottom = d3.scaleLinear()
+                .domain([10, 100])
+                .range([rectX + rectWidth/2, availableWidth]);
+
+            lineTop = d3.line()
+                .x(d => xScaleTop(d.x))
+                .y(d => yScaleTop(d.y));
+
+            lineBottom = d3.line()
+                .x(d => xScaleBottom(d.x))
+                .y(d => yScaleBottom(d.y));
+
+            topLinePath.attr("d", lineTop);
+            bottomLinePath.attr("d", lineBottom);
+
+            const topEndData = wealthTop10[wealthTop10.length - 1]; // x=9
+            const topX = xScaleTop(topEndData.x);
+            const topY = yScaleTop(topEndData.y);
+
+            const bottomStartData = wealthBottom90[0]; // x=10
+            const bottomX = xScaleBottom(bottomStartData.x);
+            const bottomY = yScaleBottom(bottomStartData.y);
+
+            connectorLine
+                .attr("x1", topX)
+                .attr("y1", topY)
+                .attr("x2", bottomX)
+                .attr("y2", bottomY);
+
+            // Update y-ticks top
+            const topTicks = yScaleTop.ticks(5);
+            const topTickSelection = topYTicksGroup.selectAll(".top-y-tick").data(topTicks);
+            topTickSelection.exit().remove();
+            const topTickEnter = topTickSelection.enter().append("g").attr("class", "top-y-tick");
+            topTickEnter.append("line").attr("class", "tick-line");
+            topTickEnter.append("text").attr("class", "tick-label");
+
+            topTickSelection.merge(topTickEnter)
+                .each(function(d) {
+                    const yPos = yScaleTop(d);
+                    d3.select(this).select("line")
+                        .attr("x1", rectX)
+                        .attr("x2", rectX - 6)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+
+                    d3.select(this).select("text")
+                        .attr("x", rectX - 8)
+                        .attr("y", yPos)
+                        .attr("text-anchor", "end")
+                        .text(d.toFixed(0));
+                });
+
+            // Update y-ticks bottom
+            const bottomTicks = yScaleBottom.ticks(5);
+            const bottomTickSelection = bottomYTicksGroup.selectAll(".bottom-y-tick").data(bottomTicks);
+            bottomTickSelection.exit().remove();
+            const bottomTickEnter = bottomTickSelection.enter().append("g").attr("class", "bottom-y-tick");
+            bottomTickEnter.append("line").attr("class", "tick-line");
+            bottomTickEnter.append("text").attr("class", "tick-label");
+
+            bottomTickSelection.merge(bottomTickEnter)
+                .each(function(d) {
+                    const yPos = yScaleBottom(d);
+                    d3.select(this).select("line")
+                        .attr("x1", rectX + rectWidth)
+                        .attr("x2", rectX + rectWidth + 6)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+
+                    d3.select(this).select("text")
+                        .attr("x", rectX + rectWidth + 8)
+                        .attr("y", yPos)
+                        .attr("text-anchor", "start")
+                        .text(d.toFixed(0));
+                });
+
+            // Update x-ticks top: now show 0,2,4,6,8
+            const topXTicks = [0,2,4,6,8];
+            const topXTickSelection = topXTicksGroup.selectAll(".top-x-tick").data(topXTicks);
+            topXTickSelection.exit().remove();
+            const topXTickEnter = topXTickSelection.enter().append("g").attr("class", "top-x-tick");
+            topXTickEnter.append("line").attr("class", "tick-line");
+            topXTickEnter.append("text").attr("class", "tick-label");
+
+            topXTickSelection.merge(topXTickEnter)
+                .each(function(d) {
+                    const xPos = xScaleTop(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", height)
+                        .attr("y2", height - 6);
+
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", height + 10)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            // Update x-ticks bottom
+            // Make sure 10 is included and at the center of the prism
+            let bottomXTicks = xScaleBottom.ticks(4); 
+            bottomXTicks = [10].concat(bottomXTicks.filter(d => d > 10));
+
+            const bottomXTickSelection = bottomXTicksGroup.selectAll(".bottom-x-tick").data(bottomXTicks);
+            bottomXTickSelection.exit().remove();
+            const bottomXTickEnter = bottomXTickSelection.enter().append("g").attr("class", "bottom-x-tick");
+            bottomXTickEnter.append("line").attr("class", "tick-line");
+            bottomXTickEnter.append("text").attr("class", "tick-label");
+
+            bottomXTickSelection.merge(bottomXTickEnter)
+                .each(function(d) {
+                    const xPos = xScaleBottom(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", height)
+                        .attr("y2", height - 6);
+
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", height + 10)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+        }
+
+        // Initial draw
+        updateCharts();
+
+        // Define drag behavior
+        const drag = d3.drag()
+            .on("start", function () {
+                d3.select(this).raise(); 
+            })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                // Clamp the x position
+                newX = Math.max(0, Math.min(availableWidth - rectWidth, newX));
+
+                rectX = newX;
+
+                // Update prism position
+                rect.attr("x", rectX);
+                topTriangle.attr("points",
+                    `${rectX},${rectY} 
+                     ${rectX + rectWidth},${rectY} 
+                     ${rectX + rectWidth / 2},${rectY - 10 * scaleFactor}`
+                );
+
+                bottomTriangle.attr("points",
+                    `${rectX},${rectY + rectHeight} 
+                     ${rectX + rectWidth},${rectY + rectHeight} 
+                     ${rectX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}`
+                );
+
+                // Update charts and ticks
+                updateCharts();
+            });
+
+        // Append the prism rectangle
+        const rect = g.append("rect")
+            .attr("x", rectX)
+            .attr("y", rectY)
+            .attr("width", rectWidth)
+            .attr("height", rectHeight)
+            .attr("class", "prism")
+            .call(drag);
+
+        // Append top triangle
+        const topTriangle = g.append("polygon")
+            .attr("class", "prism")
+            .attr("points",
+                `${rectX},${rectY} 
+                 ${rectX + rectWidth},${rectY} 
+                 ${rectX + rectWidth / 2},${rectY - 10 * scaleFactor}`
+            )
+            .call(drag);
+
+        // Append bottom triangle
+        const bottomTriangle = g.append("polygon")
+            .attr("class", "prism")
+            .attr("points",
+                `${rectX},${rectY + rectHeight} 
+                 ${rectX + rectWidth},${rectY + rectHeight} 
+                 ${rectX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}`
+            )
+            .call(drag);
+    </script>
+</body>
+</html>

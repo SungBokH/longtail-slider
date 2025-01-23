@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual-Scale X-Axis with Blank Space</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dual-Scale X-Axis with Blank Space</h1>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins
+        const width = 600, height = 300, margin = {top: 20, right: 30, bottom: 50, left: 40};
+        const blankSpace = 20; // Width of the blank space in pixels
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Data for two segments
+        const dataset1 = d3.range(0, 11).map(x => ({x, y: Math.sin(x)})); // 0 to 10
+        const dataset2 = d3.range(10, 101, 10).map(x => ({x, y: Math.log(x)})); // 10 to 100
+
+        // Total width minus blank space
+        const availableWidth = width - blankSpace;
+
+        // Create custom non-linear x-scale
+        const xScale = x => {
+            const boundary = 10; // Boundary where scale changes
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + blankSpace + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };
+
+        // Shared y-scale
+        const yScale = d3.scaleLinear()
+            .domain([d3.min([...dataset1, ...dataset2], d => d.y), d3.max([...dataset1, ...dataset2], d => d.y)])
+            .range([height, 0]);
+
+        // Line generators
+        const line1 = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y));
+
+        const line2 = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y));
+
+        // Draw first dataset
+        svg.append("path")
+            .datum(dataset1)
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 2)
+            .attr("d", line1);
+
+        // Draw second dataset
+        svg.append("path")
+            .datum(dataset2)
+            .attr("fill", "none")
+            .attr("stroke", "orange")
+            .attr("stroke-width", 2)
+            .attr("d", line2);
+
+        // Custom x-axis tick labels for 0-10
+        const xAxis1 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, availableWidth / 2])) // 0-10 mapped to first half
+            .tickValues([0, 2, 4, 6, 8, 10])
+            .tickFormat(d => d);
+
+        // Custom x-axis tick labels for 10-100
+        const xAxis2 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([10, 100])
+                .range([(availableWidth / 2) + blankSpace, width])) // 10-100 mapped to second half
+            .tickValues([20, 40, 60, 80, 100])
+            .tickFormat(d => d);
+
+        // Draw x-axis for 0-10
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis1);
+
+        // Draw x-axis for 10-100
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis2);
+
+        // Add y-axis
+        const yAxis = d3.axisLeft(yScale).ticks(6);
+        svg.append("g").call(yAxis);
+
+        // Add labels
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", height + margin.bottom - 5)
+            .attr("text-anchor", "middle")
+            .text("Custom Dual Scale X-Axis");
+
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -margin.left + 10)
+            .attr("text-anchor", "middle")
+            .text("Value (Y)");
+
+        // Highlight the blank space
+        svg.append("rect")
+            .attr("x", availableWidth / 2)
+            .attr("y", 0)
+            .attr("width", blankSpace)
+            .attr("height", height)
+            .attr("fill", "lightgray")
+            .attr("opacity", 0.5);
+    </script>
+</body>
+</html>

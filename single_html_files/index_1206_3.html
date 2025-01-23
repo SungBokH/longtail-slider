@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Distribution with Draggable Prism</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h4>Pareto Distribution</h4>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins
+        const scaleFactor = 0.7;
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 60 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor;
+
+        // Median income assumption
+        const medianIncome = 45000; // Euros
+        const topWealth = 500000; // Euros for top 1%
+        const bottomMaxWealth = 45000; // Median wealth for bottom 90%
+        const bottomMinWealth = 1000; // Minimum wealth for bottom 90%
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Total width minus blank space
+        const availableWidth = width - blankSpace;
+
+        // Create custom non-linear x-scale
+        const xScale = x => {
+            const boundary = 10;
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };
+
+        // Generate wealth data
+        const wealthTop10 = d3.range(0, 10).map(i => ({
+            x: i,
+            y: topWealth * Math.pow(0.85, i) // Decreasing wealth for top 10%
+        }));
+
+        const wealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: bottomMaxWealth * Math.pow(0.85, (i - 10) / 10) + bottomMinWealth * Math.pow(0.15, (i - 10) / 10)
+        }));
+
+        // Separate y-scales for top 10% and bottom 90%
+        const yScaleTop = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop10, d => d.y)])
+            .range([height, 0]);
+
+        const yScaleBottom = d3.scaleLinear()
+            .domain([0, d3.max(wealthBottom90, d => d.y)])
+            .range([height, 0]);
+
+        // Line generator for wealth data
+        const wealthLineTop = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleTop(d.y));
+
+        const wealthLineBottom = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleBottom(d.y));
+
+        // Draw wealth line for top 10% (range 1–10)
+        svg.append("path")
+            .datum(wealthTop10)
+            .attr("transform", `translate(${blankSpace / 2}, 0)`)
+            .attr("fill", "none")
+            .attr("stroke", "#4B5366")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineTop);
+
+        // Draw wealth line for bottom 90% (range 10–100)
+        svg.append("path")
+            .datum(wealthBottom90)
+            .attr("transform", `translate(${blankSpace / 2}, 0)`)
+            .attr("fill", "none")
+            .attr("stroke", "#4B5366")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineBottom);
+
+        // Rectangle and triangles for prism
+        const rectWidth = 20 * scaleFactor, rectHeight = 145 * scaleFactor;
+        const rectX = availableWidth / 2 - rectWidth / 2; // Initial position for the rectangle
+        const rectY = (height - rectHeight) / 2;
+
+        // Define drag behavior
+        const drag = d3.drag()
+            .on("start", function () {
+                d3.select(this).raise(); // Bring the rectangle to the top during dragging
+            })
+            .on("drag", function (event) {
+                // Calculate new x position
+                let newX = event.x - rectWidth / 2;
+
+                // Clamp the x position within valid bounds
+                newX = Math.max(0, Math.min(availableWidth - rectWidth, newX));
+
+                // Update the rectangle position
+                rect.attr("x", newX);
+
+                // Update the top triangle
+                topTriangle.attr("points", `
+                    ${newX},${rectY} 
+                    ${newX + rectWidth},${rectY} 
+                    ${newX + rectWidth / 2},${rectY - 10 * scaleFactor}
+                `);
+
+                // Update the bottom triangle
+                bottomTriangle.attr("points", `
+                    ${newX},${rectY + rectHeight} 
+                    ${newX + rectWidth},${rectY + rectHeight} 
+                    ${newX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}
+                `);
+            });
+
+        // Append and style the rectangle
+        const rect = svg.append("rect")
+            .attr("x", rectX)
+            .attr("y", rectY)
+            .style("opacity", 0.3)
+            .attr("width", rectWidth)
+            .attr("height", rectHeight)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE")
+            .call(drag); // Attach the drag behavior
+
+        // Append and style the top triangle
+        const topTriangle = svg.append("polygon")
+            .style("opacity", 0.3)
+            .attr("points", `
+                ${rectX},${rectY} 
+                ${rectX + rectWidth},${rectY} 
+                ${rectX + rectWidth / 2},${rectY - 10 * scaleFactor}
+            `)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE")
+            .call(drag); // Attach the drag behavior
+
+        // Append and style the bottom triangle
+        const bottomTriangle = svg.append("polygon")
+            .style("opacity", 0.3)
+            .attr("points", `
+                ${rectX},${rectY + rectHeight} 
+                ${rectX + rectWidth},${rectY + rectHeight} 
+                ${rectX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}
+            `)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE")
+            .call(drag); // Attach the drag behavior
+    </script>
+</body>
+</html>

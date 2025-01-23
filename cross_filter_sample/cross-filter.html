@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crossfilter + D3 Car Example</title>
+    <!-- D3 v7 (you can use v6+ as well) -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Crossfilter (version 1.x or 2.x both fine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter2/1.5.4/crossfilter.min.js"></script>
+</head>
+  <body>
+  
+    <!-- A div to hold our chart -->
+    <div id="chart"></div>
+  
+    <script>
+      // Our simplified car dataset
+      const cars = [
+        { name: "Chevrolet Chevelle Malibu", mpg: 18, cylinders: 8, horsepower: 130, weight: 3504, acceleration: 12.0, year: 70, origin: "USA" },
+        { name: "Buick Skylark 320",         mpg: 15, cylinders: 8, horsepower: 150, weight: 3436, acceleration: 11.5, year: 70, origin: "USA" },
+        { name: "Plymouth Satellite",        mpg: 18, cylinders: 8, horsepower: 150, weight: 3433, acceleration: 11.0, year: 70, origin: "USA" },
+        { name: "AMC Rebel SST",             mpg: 16, cylinders: 8, horsepower: 140, weight: 3649, acceleration: 12.0, year: 70, origin: "USA" },
+        { name: "Ford Torino",               mpg: 17, cylinders: 8, horsepower: 140, weight: 3449, acceleration: 10.5, year: 70, origin: "USA" },
+        { name: "Ford Mustang",              mpg: 15, cylinders: 8, horsepower: 150, weight: 3761, acceleration: 9.5,  year: 71, origin: "USA" },
+        { name: "Datsun PL510",              mpg: 27, cylinders: 4, horsepower: 88,  weight: 2130, acceleration: 14.5, year: 71, origin: "Japan" },
+        { name: "Volkswagen 1131 Deluxe",    mpg: 26, cylinders: 4, horsepower: 60,  weight: 1834, acceleration: 19.0, year: 71, origin: "Europe"},
+        { name: "Toyota Corolla",            mpg: 31, cylinders: 4, horsepower: 65,  weight: 1773, acceleration: 19.0, year: 71, origin: "Japan" },
+        { name: "AMC Gremlin",               mpg: 19, cylinders: 6, horsepower: 100, weight: 2634, acceleration: 13.0, year: 73, origin: "USA" },
+        { name: "Volkswagen Dasher",         mpg: 26, cylinders: 4, horsepower: 80,  weight: 2265, acceleration: 15.4, year: 74, origin: "Europe"},
+        { name: "Toyota Mark II",            mpg: 24, cylinders: 6, horsepower: 115, weight: 2372, acceleration: 15.0, year: 70, origin: "Japan" },
+        { name: "Honda Civic",               mpg: 30, cylinders: 4, horsepower: 70,  weight: 1937, acceleration: 14.0, year: 75, origin: "Japan" },
+        { name: "Fiat 128",                  mpg: 29, cylinders: 4, horsepower: 75,  weight: 2246, acceleration: 16.0, year: 71, origin: "Europe"},
+        { name: "Chevrolet Nova",            mpg: 15, cylinders: 8, horsepower: 275, weight: 3962, acceleration: 10.5, year: 76, origin: "USA" }
+      ];
+  
+      //------------------------------------------------------------
+      // 2. Create Crossfilter & Dimensions/Groups
+      //------------------------------------------------------------
+  
+      // Create a crossfilter instance
+      const cf = crossfilter(cars);
+  
+      // Create a dimension based on number of cylinders
+      const cylinderDimension = cf.dimension(d => d.cylinders);
+      const horsepowerDimension = cf.dimension(d => d.horsepower);
+      const weightDimension = cf.dimension(d => d.weight);
+      const accelDimensions = cf.dimension(d => d.acceleration);
+  
+      // Create a group that counts how many records per cylinder
+      const cylinderGroup = cylinderDimension.group().reduceCount();
+      // E.g. cylinderGroup.all() might look like:
+      // [
+      //   { key: 4, value: 6 },
+      //   { key: 6, value: 2 },
+      //   { key: 8, value: 7 }
+      // ]
+  
+      // We'll base our bar chart on this group:
+      let barData = cylinderGroup.all();
+  
+      //------------------------------------------------------------
+      // 3. Build a D3 Bar Chart
+      //------------------------------------------------------------
+  
+      // Chart dimensions
+      const width = 500;
+      const height = 300;
+      const margin = { top: 20, right: 30, bottom: 30, left: 40 };
+  
+      // Create scales
+      // X scale will be the cylinder categories (4,6,8, etc.)
+      const x = d3.scaleBand()
+        .domain(barData.map(d => d.key))
+        .range([margin.left, width - margin.right])
+        .padding(0.1);
+  
+      // Y scale for the count of cars
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(barData, d => d.value)])
+        .nice() // Make a neat axis
+        .range([height - margin.bottom, margin.top]);
+  
+      // Create an SVG
+      const svg = d3.select("#chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+  
+      // Draw bars
+      svg.selectAll(".bar")
+        .data(barData)
+        .enter().append("rect")
+          .attr("class", "bar")
+          .attr("x", d => x(d.key))
+          .attr("y", d => y(d.value))
+          .attr("width", x.bandwidth())
+          .attr("height", d => y(0) - y(d.value))
+          .attr("fill", "steelblue")
+          .on("click", (event, d) => {
+            // On click, filter Crossfilter dimension to clicked bar category
+            cylinderDimension.filterExact(d.key);
+            // Then update the chart
+            updateChart();
+          });
+  
+      // Add x-axis
+      const xAxis = d3.axisBottom(x);
+      svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(xAxis);
+  
+      // Add y-axis
+      const yAxis = d3.axisLeft(y).ticks(5);
+      svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(yAxis);
+  
+      //------------------------------------------------------------
+      // 4. Updating the Chart (Interaction)
+      //------------------------------------------------------------
+      function updateChart() {
+        // Recompute the group data after filtering
+        barData = cylinderGroup.all();
+  
+        // Update Y domain (if counts changed)
+        y.domain([0, d3.max(barData, d => d.value)]).nice();
+  
+        // Select all bars and bind updated data
+        const bars = svg.selectAll(".bar")
+          .data(barData, d => d.key);
+  
+        // Transition existing bars to new heights
+        bars.transition().duration(750)
+            .attr("y", d => y(d.value))
+            .attr("height", d => y(0) - y(d.value));
+  
+        // If needed, remove bars that no longer exist
+        bars.exit()
+            .transition().duration(750)
+            .attr("height", 0)
+            .attr("y", y(0))
+            .remove();
+  
+        // Also update the y-axis
+        svg.selectAll("g.y-axis")
+           .transition().duration(750)
+           .call(yAxis);
+      }
+    </script>
+  </body>
+  </html>
+  

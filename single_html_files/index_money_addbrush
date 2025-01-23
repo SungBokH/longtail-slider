@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>Football Player Salary Distribution</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .chart {
+            display: flex;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .axis path,
+        .axis line {
+            fill: none;
+            shape-rendering: crispEdges;
+        }
+        svg {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <h2>Football Player Yearly Salary Distribution</h2>
+    <div id="main-chart"></div>
+    <div class="chart">
+        <div id="chart1"></div>
+        <div id="chart2"></div>
+    </div>
+
+    <script>
+        // Function to generate Gaussian distribution
+        function generateGaussian(mean, stdDev, count) {
+            const data = [];
+            for (let i = 0; i < count; i++) {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+                const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+                data.push(z * stdDev + mean);
+            }
+            return data;
+        }
+
+        // Generate data
+        const mainDistribution = generateGaussian(6000, 500, 80000);
+        const bumps = [
+            ...generateGaussian(7000, 200, 5000),
+            ...generateGaussian(20000, 3000, 5000),
+            ...generateGaussian(100000, 10000, 5000),
+            ...generateGaussian(500000, 50000, 2500),
+            ...generateGaussian(1000000, 100000, 2500),
+        ];
+        const allData = [...mainDistribution, ...bumps];
+
+        // Dimensions and margins
+        const margin = { top: 20, right: 50, bottom: 40, left: 50 };
+        const width = 440 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+        const brushHeight = 50;
+
+        // Brush handler
+        function brushed(event, scale) {
+            const selection = event.selection;
+            if (selection) {
+                const [x0, x1] = selection.map(scale.invert);
+                console.log(`Brushed Range: ${x0.toFixed(2)} - ${x1.toFixed(2)}`);
+            }
+        }
+
+        // Chart 1: $0 to $100,000
+        const svg1 = d3.select("#chart1")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom + brushHeight)
+            .append("g")
+            .attr("transform", `translate(${margin.left + 50},${margin.top})`);
+
+        const x1 = d3.scaleLinear()
+            .domain([0, 100000])
+            .range([0, width]);
+
+        const histogram1 = d3.histogram()
+            .domain(x1.domain())
+            .thresholds(x1.ticks(20));
+
+        const bins1 = histogram1(allData);
+
+        const y1 = d3.scaleLinear()
+            .domain([0, d3.max(bins1, d => d.length)])
+            .range([height, 0]);
+
+        svg1.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x1).ticks(10).tickFormat(d => `$${d}`));
+
+        svg1.append("g")
+            .call(d3.axisLeft(y1));
+
+        svg1.selectAll("rect")
+            .data(bins1)
+            .enter()
+            .append("rect")
+            .attr("x", d => x1(d.x0))
+            .attr("y", d => y1(d.length))
+            .attr("width", d => x1(d.x1) - x1(d.x0) - 1)
+            .attr("height", d => height - y1(d.length))
+            .style("fill", "orange");
+
+        // Brush for Chart 1
+        const brush1 = d3.brushX()
+            .extent([[0, 0], [width, brushHeight]])
+            .on("brush end", (event) => brushed(event, x1));
+
+        svg1.append("g")
+            .attr("transform", `translate(0,${height + 20})`)
+            .call(brush1);
+
+        // Chart 2: $100,000 and above
+        const svg2 = d3.select("#chart2")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom + brushHeight)
+            .append("g")
+            .attr("transform", `translate(${margin.left - 50},${margin.top})`);
+
+        const x2 = d3.scaleLinear()
+            .domain([100000, d3.max(allData)])
+            .range([0, width]);
+
+        const histogram2 = d3.histogram()
+            .domain(x2.domain())
+            .thresholds(x2.ticks(10));
+
+        const bins2 = histogram2(allData);
+
+        const y2 = d3.scaleLinear()
+            .domain([0, d3.max(bins2, d => d.length)])
+            .range([height, 0]);
+
+        svg2.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x2).ticks(5).tickFormat(d => `$${d}`));
+
+        svg2.append("g")
+            .attr("transform", `translate(${width},0)`)
+            .call(d3.axisRight(y2));
+
+        svg2.selectAll("rect")
+            .data(bins2)
+            .enter()
+            .append("rect")
+            .attr("x", d => x2(d.x0))
+            .attr("y", d => y2(d.length))
+            .attr("width", d => x2(d.x1) - x2(d.x0) - 1)
+            .attr("height", d => height - y2(d.length))
+            .style("fill", "green");
+
+        // Brush for Chart 2
+        const brush2 = d3.brushX()
+            .extent([[0, 0], [width, brushHeight]])
+            .on("brush end", (event) => brushed(event, x2));
+
+        svg2.append("g")
+            .attr("transform", `translate(0,${height + 20})`)
+            .call(brush2);
+    </script>
+</body>
+</html>

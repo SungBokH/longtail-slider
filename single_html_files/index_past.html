@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Long-Tailed Salary Distribution Histogram</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+        .brush .selection {
+            fill: rgba(70, 130, 180, 0.4); /* Semi-transparent blue */
+            stroke: #4682B4; /* SteelBlue */
+            stroke-width: 2;
+        }
+        .highlight {
+            fill: orange !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>Long-Tailed Salary Distribution Histogram</h1>
+    <div id="main-chart"></div>
+    <h2>Zoomed Salary Ranges</h2>
+    <div class="chart-container">
+        <div id="chart-low-range"></div>
+        <div id="chart-high-range"></div>
+    </div>
+    <div id="selected-area"></div>
+    <script>
+        // Parameters
+        const populationSize = 120000; // Population size
+        const meanSalary = 45000; // Mean salary
+        const binCount = 50; // Number of histogram bins
+        const scaleFactor = 1.2; // Skewness factor for a long-tailed distribution
+
+        // Generate continuous and long-tailed salary data
+        function generateLongTailedData(size, mean, scale) {
+            return Array.from({ length: size }, () => {
+                const uniform = Math.random();
+                const longTailed = Math.pow(uniform, -scale); // Power-law for long tail
+                return mean * longTailed * Math.random(); // Randomly scale within mean
+            });
+        }
+
+        const salaryData = generateLongTailedData(populationSize, meanSalary, scaleFactor);
+
+        // Dimensions
+        const mainWidth = 800;
+        const mainHeight = 400;
+        const smallWidth = 400;
+        const smallHeight = 300;
+        const margin = { top: 20, right: 20, bottom: 100, left: 60 };
+
+        // Create a histogram
+        function createHistogram(containerId, data, xRange, width, height, xLabel) {
+            const svg = d3.select(containerId)
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom);
+
+            const chart = svg.append("g")
+                .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+            const x = d3.scaleLinear()
+                .domain(xRange)
+                .nice()
+                .range([0, width]);
+
+            const histogram = d3.histogram()
+                .domain(x.domain())
+                .thresholds(x.ticks(binCount));
+
+            const bins = histogram(data);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(bins, d => d.length)]) // Frequency range
+                .nice()
+                .range([height, 0]);
+
+            // Axes
+            chart.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(x).tickFormat(d3.format("$.2s")))
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", 40)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text(xLabel);
+
+            chart.append("g")
+                .call(d3.axisLeft(y))
+                .append("text")
+                .attr("x", -height / 2)
+                .attr("y", -50)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .style("font-size", "12px")
+                .text("Frequency");
+
+            // Bars
+            chart.selectAll(".bar")
+                .data(bins)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.x0))
+                .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+                .attr("y", d => y(d.length))
+                .attr("height", d => height - y(d.length))
+                .attr("fill", "steelblue");
+        }
+
+        // Main chart
+        createHistogram(
+            "#main-chart",
+            salaryData,
+            [0, d3.max(salaryData)],
+            mainWidth,
+            mainHeight,
+            "Salary (€)"
+        );
+
+        // Low salary range chart
+        createHistogram(
+            "#chart-low-range",
+            salaryData.filter(d => d <= 1000000),
+            [0, 1000000],
+            smallWidth,
+            smallHeight,
+            "Salary (€): 0 - 100,000"
+        );
+
+        // High salary range chart
+        createHistogram(
+            "#chart-high-range",
+            salaryData.filter(d => d >= 1000000),
+            [500000000, d3.max(salaryData)],
+            smallWidth,
+            smallHeight,
+            "Salary (€): 1,000,000+"
+        );
+    </script>
+</body>
+</html>

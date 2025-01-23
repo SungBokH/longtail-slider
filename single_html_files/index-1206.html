@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Distribution</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h4>Pareto Distribution</h4>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins
+        const scaleFactor = 0.7;
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 60 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor;
+
+        // Median income assumption
+        const medianIncome = 45000; // Euros
+        const topWealth = 500000; // Euros for top 1%
+        const bottomMaxWealth = 45000; // Median wealth for bottom 90%
+        const bottomMinWealth = 1000; // Minimum wealth for bottom 90%
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Total width minus blank space
+        const availableWidth = width - blankSpace;
+
+        // Create custom non-linear x-scale
+/*        const xScale = x => {
+            const boundary = 10;
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };*/
+        
+        const xScale = x => {
+            const boundary = 10;
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                // Adjust the calculation to ensure x = 100 maps to the full available width
+                return (availableWidth / 2) + ((x - boundary) / (100 - boundary)) * ((availableWidth / 2));
+            }
+        };
+
+
+        // Generate wealth data
+        const wealthTop10 = d3.range(0, 10).map(i => ({
+            x: i,
+            y: topWealth * Math.pow(0.85, i) // Decreasing wealth for top 10%
+        }));
+
+        // Generate bottom 90% wealth, removing the first value and adjusting the range
+        const rawWealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: bottomMaxWealth * Math.pow(0.85, (i - 10) / 10) + bottomMinWealth * Math.pow(0.15, (i - 10) / 10)
+        }));
+
+        const wealthBottom90 = rawWealthBottom90; // Remove the first value
+
+        // Add a point at the right boundary of the blank space with the removed first value
+        const rightBoundaryPoint = {
+            x: 10, // Right edge of the blank space corresponds to x = 10
+            y: rawWealthBottom90[0].y // First value of the bottom 90%
+        };
+
+        //const allData = [...wealthTop10, ...wealthBottom90];
+
+       // Separate y-scales for top 10% and bottom 90%
+        const yScaleTop = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop10, d => d.y)])
+            .range([height, 0]);
+
+        const yScaleBottom = d3.scaleLinear()
+            .domain([0, d3.max([...wealthBottom90, rightBoundaryPoint], d => d.y)]) // Include right boundary point
+            .range([height, 0]);
+
+        // Line generator for wealth data
+        const wealthLineTop = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleTop(d.y));
+
+        const wealthLineBottom = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleBottom(d.y));
+
+
+        // Draw wealth line for top 10% (range 1–10)
+        svg.append("path")
+            .datum(wealthTop10)
+            .attr("transform", `translate(${blankSpace/2},-0)`)
+            .attr("fill", "none")
+            .attr("stroke", "#4B5366")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineTop);
+
+        // Draw wealth line for bottom 90% (range 10–100)
+        svg.append("path")
+            .datum(wealthBottom90)
+            .attr("transform", `translate(${blankSpace/2},-0)`)
+            .attr("fill", "none")
+            .attr("stroke", "#4B5366")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineBottom);
+
+
+    // Calculate the x position for the right edge of the blank space
+    const rightEdgeOfBlankSpace = (availableWidth / 2) + blankSpace;
+
+
+
+        // Connect the blue dot to the left part of the blue line chart
+        /*svg.append("line")
+            .attr("x1", xScale(wealthTop10[wealthTop10.length - 1].x)) // Start from the right edge of the blank space
+            .attr("y1", yScaleBottom(rightBoundaryPoint.y)) // Use the y value of the blue dot
+            .attr("x2", xScale(wealthBottom90[0].x)) // Connect to the first data point of the blue line
+            .attr("y2", yScaleBottom(wealthBottom90[0].y)) // Use the y value of the first data point of the blue line
+            .attr("stroke", "#9A9A9A")
+            .attr("stroke-width", 2);*/
+
+        // Add "Concorde-like" shape between the charts
+        
+        const rectWidth = 20*scaleFactor, rectHeight = 145*scaleFactor;
+        const rectX = availableWidth/2 - rectWidth/2; // Position for the rectangle
+        const rectY = (height + margin.top + margin.bottom - rectHeight*scaleFactor)-120*scaleFactor;
+
+        // Draw the rectangle
+        svg.append("rect")
+            .attr("transform", `translate(-0,-0)`)
+            .attr("x", rectX)
+            .attr("y", rectY)
+            .style("opacity", 0.3)
+            .attr("width", rectWidth)
+            .attr("height", rectHeight)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE");
+
+        // Draw the top triangle
+        svg.append("polygon")
+        .style("opacity", 0.3)
+            .attr("points", `
+                ${rectX},${rectY} 
+                ${rectX + rectWidth},${rectY} 
+                ${rectX + rectWidth / 2},${rectY - 10*scaleFactor}
+            `)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE");
+
+        // Draw the bottom triangle
+        svg.append("polygon")
+        .style("opacity", 0.3)
+            .attr("points", `
+                ${rectX},${rectY + rectHeight} 
+                ${rectX + rectWidth},${rectY + rectHeight} 
+                ${rectX + rectWidth / 2},${rectY + rectHeight + 10*scaleFactor}
+            `)
+            .attr("stroke", "#B0C4DE")
+            .attr("fill", "#B0C4DE");
+
+
+        // Custom x-axis tick labels for 0-10
+        const xAxis1 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, availableWidth / 2]))
+            .tickValues([1, 2, 4, 6, 8, 10])
+            .tickFormat(d => `${d}%`);
+
+        // Custom x-axis tick labels for 10-100
+        const xAxis2 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([10, 100])
+                .range([(availableWidth / 2), width]))
+            .tickValues([20, 40, 60, 80, 100])
+            .tickFormat(d => `${d}%`);
+
+        // Draw x-axis for 0-10
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis1);
+
+        // Draw x-axis for 10-100
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis2);
+
+        // Add maximum y-scale labels at the chart edges
+        svg.append("text")
+            .attr("x", availableWidth / 2 - blankSpace / 2 - 45)
+            .attr("y", yScaleTop(d3.max(wealthTop10, d => d.y))+5)
+            .attr("text-anchor", "end")
+            .attr("fill", "#333333")
+            .attr("font-size", 15)
+            .text(`€${d3.format(",")(d3.max(wealthTop10, d => d.y))}`);
+
+        svg.append("text")
+            .attr("x", availableWidth / 2 + blankSpace / 2 +10)
+            .attr("y", yScaleBottom(d3.max(wealthBottom90, d => d.y))+5)
+            .attr("text-anchor", "start")
+            .attr("fill", "#333333")
+            .attr("font-size", 15)
+            .text(`€${d3.format(",")(d3.max(wealthBottom90, d => d.y))}`);
+
+
+        // Coordinates for the end of the green line and the blue dot position
+        const greenEndPoint = {
+            x: xScale(wealthTop10[wealthTop10.length - 1].x) + blankSpace/2, // End of the green chart
+            y: yScaleTop(wealthTop10[wealthTop10.length - 1].y)
+        };
+
+        const blueDotPosition = {
+            x: xScale(10)+ blankSpace/2 , // Right edge of the blank space
+            y: yScaleBottom(rawWealthBottom90[0].y) // Y-coordinate of the blue dot
+        };
+
+        // Draw the gray connecting line
+        svg.append("line")
+            .attr("x1", greenEndPoint.x) // End of the green chart
+            .attr("y1", greenEndPoint.y)
+            .attr("x2", blueDotPosition.x) // Position of the blue dot
+            .attr("y2", blueDotPosition.y)
+            .style("opacity", 0.6)
+            .attr("stroke", "#4B5366")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "4,2"); // Optional dashed style
+
+        // Draw horizontal lines at specific y-values for both charts
+        const yValues = [40000,20000,10000];
+                yValues.forEach((yValue) => {
+                    // Draw line for the top 10% portion
+                    if (yValue <= d3.max(wealthTop10, d => d.y)) {
+                        svg.append("line")
+                            .attr("x1", 0)
+                            .attr("y1", yScaleTop(yValue))
+                            .attr("x2", availableWidth / 2 - blankSpace / 2)
+                            .attr("y2", yScaleTop(yValue))
+                            .attr("stroke", "lightblue")
+                            .attr("stroke-width", 1)
+                            .attr("stroke-dasharray", "4,2");
+
+                        /*svg.append("text")
+                            .attr("x", availableWidth / 2 + 5)
+                            .attr("y", yScaleTop(yValue) + 3)
+                            .attr("fill", "lightblue")
+                            .attr("font-size", 10)
+                            .text(`y = ${yValue}`);*/
+                    }
+
+                    // Draw line for the bottom 90% portion
+                    if (yValue <= d3.max(wealthBottom90, d => d.y)) {
+                        svg.append("line")
+                            .attr("x1", availableWidth / 2 + blankSpace/2 ) 
+                            .attr("y1", yScaleBottom(yValue))
+                            .attr("x2", width)
+                            .attr("y2", yScaleBottom(yValue))
+                            .attr("stroke", "lightblue")
+                            .attr("stroke-width", 1)
+                            .attr("stroke-dasharray", "4,2");
+
+                        svg.append("text")
+                            .attr("x", width - 50)
+                            .attr("y", yScaleBottom(yValue) - 10)
+                            .attr("fill", "lightblue")
+                            .attr("font-size", 10)
+                            .text(`y = ${yValue}`);
+                    }
+
+                    svg.append("line")
+                            .attr("x1", availableWidth / 2 - blankSpace / 2 ) 
+                            .attr("y1", yScaleTop(yValue))
+                            .attr("x2", availableWidth / 2 + blankSpace/2)
+                            .attr("y2", yScaleBottom(yValue))
+                            .attr("stroke", "lightblue")
+                            .attr("stroke-width", 1)
+                            .attr("stroke-dasharray", "4,2");
+                });
+
+// Brush functionality for the x-axis
+const xAxisBrushHeight = 30 * scaleFactor; // Height for the new x-axis brush
+    const xAxisBrushMarginTop = 10 * scaleFactor; // Margin between the x-axis and the new brush
+
+    const xAxisBrushGroup = svg.append("g")
+        .attr("class", "x-axis-brush")
+        .attr("transform", `translate(0, ${height + xAxisBrushMarginTop})`);
+
+    // Brush functionality for the x-axis
+    const xAxisBrush = d3.brushX()
+        .extent([[0, 0], [width, xAxisBrushHeight]])
+        .on("brush", xAxisBrushed)
+        .on("end", xAxisBrushEnded);
+
+    xAxisBrushGroup.call(xAxisBrush);
+
+    // Style the x-axis brush selection
+    xAxisBrushGroup.selectAll(".selection")
+        .attr("fill", "lightblue")
+        .attr("stroke-width", 2);
+
+    // Brushed event handler for the x-axis brush
+    function xAxisBrushed({ selection }) {
+        if (!selection) return;
+
+        const [x0, x1] = selection.map(invertBrushScale);
+
+        svg.selectAll(".highlight-x-axis").remove();
+
+        // Highlight the selected region on the main chart
+        svg.append("rect")
+            .attr("class", "highlight-x-axis")
+            .attr("x", xScale(x0))
+            .attr("y", 0)
+            .attr("width", xScale(x1) - xScale(x0))
+            .attr("height", height)
+            .attr("fill", "#C0C0C0")
+            .attr("opacity", 0.5);
+    }
+
+    // Brush ended event handler for the x-axis brush
+    function xAxisBrushEnded({ selection }) {
+        if (!selection) {
+            svg.selectAll(".highlight-x-axis").remove();
+            return;
+        }
+
+        const [x0, x1] = selection.map(invertBrushScale);
+
+        svg.selectAll(".highlight-x-axis").remove();
+
+        // Highlight the selected region on the main chart
+        svg.append("rect")
+            .attr("class", "highlight-x-axis")
+            .attr("x", xScale(x0))
+            .attr("y", 0)
+            .attr("width", xScale(x1) - xScale(x0))
+            .attr("height", height)
+            .attr("fill", "#C0C0C0")
+            .attr("opacity", 0.5);
+    }
+
+    // Custom invert function for the brush
+    function invertBrushScale(pixel) {
+        const midWidth = width / 2;
+        if (pixel <= midWidth) {
+            return (pixel / midWidth) * 10; // Map the first half to range 0-10
+        } else {
+            return 10 + ((pixel - midWidth) / midWidth) * 90; // Map the second half to range 10-100
+        }
+    }
+
+    // Align brush selection with the non-linear xScale of the chart
+    function mapBrushScale(domainValue) {
+        const midWidth = width / 2;
+        if (domainValue <= 10) {
+            return (domainValue / 10) * midWidth; // Map range 0-10 to the first half
+        } else {
+            return midWidth + ((domainValue - 10) / 90) * midWidth; // Map range 10-100 to the second half
+        }
+    }
+
+    // Initialize the brush with a default selection (e.g., 2 to 6 on the domain)
+    const initialBrushRange = [2, 6].map(mapBrushScale);
+    xAxisBrushGroup.call(xAxisBrush.move, initialBrushRange);
+
+    </script>
+</body>
+</html>
