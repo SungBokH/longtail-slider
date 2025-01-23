@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iterate, Iterate, and Iterate</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "d3": "https://cdn.jsdelivr.net/npm/d3@7/+esm"
+      }
+    }
+  </script>
+  
+  <link rel="stylesheet" href="../chart_v_dec17/style.css">
+</head>
+
+<body>
+  <!-- <div class="charts-container">
+    <h4>Pareto (Percentile)</h4>
+    <div id="chart1"></div>
+  </div> -->
+  <figure id="chart2-container">
+    <figcaption>Gaussian (salary in France)</figcaption>
+    <div id="chart2"></div>
+  </figure>
+  <script type="module" src="widget.js"></script>
+  <script type="module">
+    import * as d3 from "d3";
+    import BarChartMagnitude from './widget.js'
+  
+    function getData() {
+      const maxSalary = 70000000;
+      const randomNormal = d3.randomNormal(9, 1.2);
+      const N = 10000;
+      let salaries = d3.range(N).map(() => Math.exp(randomNormal()));
+      const maxVal = d3.max(salaries);
+      const scaleFactorSalary = maxSalary / maxVal;
+      salaries = salaries.map(d => d * scaleFactorSalary);
+      return salaries
+    }
+
+    const randomSalary = getData()
+    console.log(randomSalary)
+
+    const barChartMagnitude = BarChartMagnitude({
+      data: randomSalary,
+      domains: [100_000, 1_000_000], // divide x axis on 100K and 1M
+      xBins: [.25, .65], // in percent on the x axis, the position of domain separators
+      binSize: [5000, 50_000, 3_450_000] // size of bin for each division
+      // y: (binData, i) => {
+      //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+      //   return d3.scaleLinear().domain([0, max])
+      // },
+    })
+
+    barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+    // setInterval(() => {
+    //   randomSalary.pop()
+    //   barChartMagnitude.updateData()
+    // }, 400) 
+
+    document.querySelector('#chart2').append(barChartMagnitude)
+  </script>
+</body>
+
+</html>
