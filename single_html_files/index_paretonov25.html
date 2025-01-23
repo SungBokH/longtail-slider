@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Income Histogram with Brush</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .brush .selection {
+            fill: rgba(70, 130, 180, 0.4); /* Semi-transparent blue */
+            stroke: #4682B4; /* SteelBlue */
+            stroke-width: 2;
+        }
+        .highlight {
+            fill: orange !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pareto Income Distribution with Brush</h1>
+    <div id="chart"></div>
+    <script>
+        // Parameters
+        const sampleSize = 100000;
+        const minSalary = 2000;
+        const maxSalary = 5000000;
+        const averageSalary = 52000;
+
+        // Pareto shape parameter alpha for wealth equality
+        const alpha = 2.14; // Approximation for top 20% = bottom 80%
+        
+        // Generate Pareto income data
+        const incomeData = [];
+        for (let i = 0; i < sampleSize; i++) {
+            // Generate Pareto value
+            let r = Math.random();
+            let salary = minSalary / Math.pow(1 - r, 1 / alpha);
+            salary = Math.min(salary, maxSalary);
+            incomeData.push(salary);
+        }
+
+        // Scale data to have the desired average salary
+        const currentAverage = incomeData.reduce((sum, d) => sum + d, 0) / sampleSize;
+        const scalingFactor = averageSalary / currentAverage;
+        const scaledIncomeData = incomeData.map(d => d * scalingFactor);
+
+        // Calculate percentiles and average salary per percentile
+        scaledIncomeData.sort((a, b) => a - b);
+        const percentiles = [];
+        for (let i = 0; i < 100; i++) {
+            const startIdx = Math.floor((i / 100) * sampleSize);
+            const endIdx = Math.floor(((i + 1) / 100) * sampleSize);
+            const binData = scaledIncomeData.slice(startIdx, endIdx);
+            const averageSalary = binData.reduce((sum, d) => sum + d, 0) / binData.length;
+            percentiles.push({ percentile: i + 1, averageSalary });
+        }
+
+        // Dimensions (scaled to 50%)
+        const width = 400;  // 50% of original 800
+        const height = 300; // 50% of original 400
+        const margin = { top: 10, right: 15, bottom: 25, left: 35 };
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+
+        const chart = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Scales
+        const x = d3.scaleLinear()
+            .domain([0, 100]) // Percentiles from 0 to 100
+            .range([0, width]);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(percentiles, d => d.averageSalary)])
+            .nice()
+            .range([height, 0]);
+
+        // Axes
+        chart.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(d3.axisBottom(x).tickFormat(d => `${d}%`))
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", 20)
+            .attr("fill", "black")
+            .attr("text-anchor", "middle")
+            .style("font-size", "10px")
+            .text("Population Percentile");
+
+        chart.append("g")
+            .call(d3.axisLeft(y).tickFormat(d3.format("$.2s")).ticks(5))
+            .append("text")
+            .attr("x", -height / 2)
+            .attr("y", -25)
+            .attr("fill", "black")
+            .attr("text-anchor", "middle")
+            .attr("transform", "rotate(-90)")
+            .style("font-size", "10px")
+            .text("Average Salary (€)");
+
+        // Bars
+        const bars = chart.selectAll(".bar")
+            .data(percentiles)
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", d => x(d.percentile - 1))
+            .attr("width", x(1) - x(0) - 1)
+            .attr("y", d => y(d.averageSalary))
+            .attr("height", d => height - y(d.averageSalary))
+            .attr("fill", "steelblue");
+
+        // Brush
+        const brushHeight = 15; // Adjusted for smaller chart
+        const brush = d3.brushX()
+            .extent([[0, 0], [width, brushHeight]])
+            .on("brush end", brushed);
+
+        const brushG = svg.append("g")
+            .attr("class", "brush")
+            .attr("transform", `translate(${margin.left}, ${height + margin.top + 20})`)
+            .call(brush);
+
+        function brushed(event) {
+            const selection = event.selection;
+            if (selection) {
+                const [x0, x1] = selection.map(x.invert);
+                const selectedBars = percentiles.filter(d => d.percentile >= x0 && d.percentile <= x1);
+
+                // Highlight selected bars
+                bars.attr("class", d => (d.percentile >= x0 && d.percentile <= x1) ? "bar highlight" : "bar")
+                    .attr("fill", d => (d.percentile >= x0 && d.percentile <= x1) ? "orange" : "steelblue");
+
+                console.log("Selected Data:", selectedBars);
+            } else {
+                // Clear highlights when brush is reset
+                bars.attr("fill", "steelblue");
+            }
+        }
+    </script>
+</body>
+</html>

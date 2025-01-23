@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Distribution</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pareto Distribution</h1>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins
+        const scaleFactor = 0.7;
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 60 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor;
+
+        // Median income assumption
+        const medianIncome = 45000; // Euros
+        const topWealth = 500000; // Euros for top 1%
+        const bottomMaxWealth = 45000; // Median wealth for bottom 90%
+        const bottomMinWealth = 1000; // Minimum wealth for bottom 90%
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Total width minus blank space
+        const availableWidth = width - blankSpace;
+
+        // Create custom non-linear x-scale
+        const xScale = x => {
+            const boundary = 10;
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + blankSpace + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };
+
+        // Generate wealth data
+        // Generate wealth data
+        const wealthTop10 = d3.range(1, 11).map(i => ({
+            x: i,
+            y: topWealth * Math.pow(0.85, i) // Decreasing wealth for top 10%
+        }));
+
+        // Generate bottom 90% wealth, removing the first value and adjusting the range
+        const rawWealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: bottomMaxWealth * Math.pow(0.85, (i - 10) / 10) + bottomMinWealth * Math.pow(0.15, (i - 10) / 10)
+        }));
+
+        const wealthBottom90 = rawWealthBottom90.slice(1); // Remove the first value
+
+        // Add a point at the right boundary of the blank space with the removed first value
+        const rightBoundaryPoint = {
+            x: 10, // Right edge of the blank space corresponds to x = 10
+            y: rawWealthBottom90[0].y // First value of the bottom 90%
+        };
+
+        //const allData = [...wealthTop10, ...wealthBottom90];
+
+       // Separate y-scales for top 10% and bottom 90%
+        const yScaleTop = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop10, d => d.y)])
+            .range([height, 0]);
+
+        const yScaleBottom = d3.scaleLinear()
+            .domain([0, d3.max([...wealthBottom90, rightBoundaryPoint], d => d.y)]) // Include right boundary point
+            .range([height, 0]);
+
+        // Line generator for wealth data
+        const wealthLineTop = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleTop(d.y));
+
+        const wealthLineBottom = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScaleBottom(d.y));
+
+
+        // Draw wealth line for top 10% (range 1–10)
+        svg.append("path")
+            .datum(wealthTop10)
+            .attr("fill", "none")
+            .attr("stroke", "#000000")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineTop);
+
+        // Draw wealth line for bottom 90% (range 10–100)
+        svg.append("path")
+            .datum(wealthBottom90)
+            .attr("fill", "none")
+            .attr("stroke", "#9A9A9A")
+            .attr("stroke-width", 2)
+            .attr("d", wealthLineBottom);
+
+
+    // Calculate the x position for the right edge of the blank space
+    const rightEdgeOfBlankSpace = (availableWidth / 2) + blankSpace;
+
+
+
+        // Connect the blue dot to the left part of the blue line chart
+        svg.append("line")
+            .attr("x1", rightEdgeOfBlankSpace) // Start from the right edge of the blank space
+            .attr("y1", yScaleBottom(rightBoundaryPoint.y)) // Use the y value of the blue dot
+            .attr("x2", xScale(wealthBottom90[0].x)) // Connect to the first data point of the blue line
+            .attr("y2", yScaleBottom(wealthBottom90[0].y)) // Use the y value of the first data point of the blue line
+            .attr("stroke", "#9A9A9A")
+            .attr("stroke-width", 2);
+
+        // Highlight the blank space
+        svg.append("rect")
+            .attr("x", availableWidth / 2)
+            .attr("y", 0)
+            .attr("width", blankSpace)
+            .attr("height", height)
+            .attr("fill", "lightgray")
+            .attr("opacity", 0.5);
+
+        // Custom x-axis tick labels for 0-10
+        const xAxis1 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, availableWidth / 2]))
+            .tickValues([1, 2, 4, 6, 8, 10])
+            .tickFormat(d => `${d}%`);
+
+        // Custom x-axis tick labels for 10-100
+        const xAxis2 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([10, 100])
+                .range([(availableWidth / 2) + blankSpace, width]))
+            .tickValues([20, 40, 60, 80, 100])
+            .tickFormat(d => `${d}%`);
+
+        // Draw x-axis for 0-10
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis1);
+
+        // Draw x-axis for 10-100
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis2);
+
+        // Add maximum y-scale labels at the chart edges
+        svg.append("text")
+            .attr("x", availableWidth / 2 - blankSpace / 2 - 5)
+            .attr("y", yScaleTop(d3.max(wealthTop10, d => d.y)))
+            .attr("text-anchor", "end")
+            .attr("fill", "#000000")
+            .attr("font-size", 12)
+            .text(`€${d3.format(",")(d3.max(wealthTop10, d => d.y))}`);
+
+        svg.append("text")
+            .attr("x", availableWidth / 2 + blankSpace / 2 + 100)
+            .attr("y", yScaleBottom(d3.max(wealthBottom90, d => d.y))-15)
+            .attr("text-anchor", "start")
+            .attr("fill", "#9A9A9A")
+            .attr("font-size", 12)
+            .text(`€${d3.format(",")(d3.max(wealthBottom90, d => d.y))}`);
+
+
+        // Coordinates for the end of the green line and the blue dot position
+        const greenEndPoint = {
+            x: xScale(wealthTop10[wealthTop10.length - 1].x), // End of the green chart
+            y: yScaleTop(wealthTop10[wealthTop10.length - 1].y)
+        };
+
+        const blueDotPosition = {
+            x: (availableWidth / 2) + blankSpace, // Right edge of the blank space
+            y: yScaleBottom(rawWealthBottom90[0].y) // Y-coordinate of the blue dot
+        };
+
+        // Draw the gray connecting line
+        svg.append("line")
+            .attr("x1", greenEndPoint.x) // End of the green chart
+            .attr("y1", greenEndPoint.y)
+            .attr("x2", blueDotPosition.x) // Position of the blue dot
+            .attr("y2", blueDotPosition.y)
+            .attr("stroke", "gray")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "4,2"); // Optional dashed style
+
+
+
+
+            // Define dimensions and padding for the brush
+        const brushHeight = 30 * scaleFactor; // Brush height
+        const brushMarginTop = 10 * scaleFactor; // Distance between the chart and the brush
+
+        // Add brush group below the chart
+        const brushGroup = svg.append("g")
+            .attr("class", "brush")
+            .attr("transform", `translate(0, ${height + brushMarginTop})`);
+
+        // Brush scales
+        const xScaleBrush = x => {
+            const boundary = 10;
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + blankSpace + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };
+
+        const xScaleBrushInvert = x => {
+            const boundary = 10;
+            const midWidth = (availableWidth / 2);
+            if (x <= midWidth) {
+                return (x / midWidth) * boundary; // Map first half back to 0–10
+            } else {
+                const adjustedX = x - midWidth - blankSpace;
+                return boundary + (adjustedX / midWidth) * (100 - boundary); // Map second half to 10–100
+            }
+        };
+
+        // Brush functionality
+        const brush = d3.brushX()
+            .extent([[0, 0], [width, brushHeight]]) // Brush constrained to the x-axis
+            .on("brush", brushed)
+            .on("end", brushEnded);
+
+        // Attach the brush to the group
+        brushGroup.call(brush);
+
+        // Style the brush for visibility
+        brushGroup.selectAll(".selection")
+            .attr("fill", "lightblue") // Highlight the brushed area
+            .attr("stroke-width", 2);
+
+        // Brushed event handler
+        function brushed({ selection }) {
+            if (!selection) return;
+
+            const [x0, x1] = selection.map(d => xScaleBrushInvert(d)); // Map brush pixel positions to data range
+
+            const blankStart = availableWidth / 2; // Start of blank space in pixels
+            const blankEnd = blankStart + blankSpace; // End of blank space in pixels
+
+            // Clear any existing highlights
+            svg.selectAll(".highlight").remove();
+
+            // If either point is in the blank zone, clear the selection and exit
+            if ((xScaleBrush(x0) >= blankStart && xScaleBrush(x0) <= blankEnd) ||
+                (xScaleBrush(x1) >= blankStart && xScaleBrush(x1) <= blankEnd)) {
+                brushGroup.call(brush.move, null); // Clear the brush selection
+                return;
+            }
+
+            // Add a highlighted rectangle to the chart
+            svg.append("rect")
+                .attr("class", "highlight")
+                .attr("x", xScale(x0)) // Map x0 to chart's x-scale
+                .attr("y", 0) // Start from the top of the chart
+                .attr("width", xScale(x1) - xScale(x0)) // Width of the highlighted area
+                .attr("height", height) // Cover the full height of the chart
+                .attr("fill", "lightblue") // Same color as the brush selection
+                .attr("opacity", 0.5); // Transparent to see the chart below
+        }
+
+        // Brush end event handler
+        function brushEnded({ selection }) {
+            if (!selection) {
+                // Clear the highlights if no selection is made
+                svg.selectAll(".highlight").remove();
+                console.log("No selection made.");
+                return;
+            }
+
+            const [x0, x1] = selection.map(d => xScaleBrushInvert(d)); // Map brush pixel positions to data range
+
+            const blankStart = availableWidth / 2; // Start of blank space in pixels
+            const blankEnd = blankStart + blankSpace; // End of blank space in pixels
+
+            // Clear any existing highlights
+            svg.selectAll(".highlight").remove();
+
+            // If either point is in the blank zone, clear the selection and exit
+            if ((xScaleBrush(x0) >= blankStart && xScaleBrush(x0) <= blankEnd) ||
+                (xScaleBrush(x1) >= blankStart && xScaleBrush(x1) <= blankEnd)) {
+                brushGroup.call(brush.move, null); // Clear the brush selection
+                console.log("Invalid selection (overlaps with blank space).");
+                return;
+            }
+
+            // Add a highlighted rectangle to the chart
+            svg.append("rect")
+                .attr("class", "highlight")
+                .attr("x", xScale(x0)) // Map x0 to chart's x-scale
+                .attr("y", 0) // Start from the top of the chart
+                .attr("width", xScale(x1) - xScale(x0)) // Width of the highlighted area
+                .attr("height", height) // Cover the full height of the chart
+                .attr("fill", "lightblue") // Same color as the brush selection
+                .attr("opacity", 0.5); // Transparent to see the chart below
+
+            console.log(`Final brushed range: [${x0.toFixed(1)}, ${x1.toFixed(1)}]`);
+        }
+
+        // Define the desired initial range for the brush in the data space
+        const initialBrushRange = [2, 5];
+
+        // Attach the brush to the group and initialize it
+        brushGroup.call(brush)
+            .call(brush.move, initialBrushRange.map(xScaleBrush));
+
+    </script>
+</body>
+</html>

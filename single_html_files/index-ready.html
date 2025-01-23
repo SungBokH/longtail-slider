@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual-Scale X-Axis with Blank Space</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dual-Scale X-Axis with Blank Space</h1>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins (scaled down by 60%)
+        const scaleFactor = 0.7; // 40% of original size
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 40 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor; // Width of the blank space in pixels
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        // Data for two segments
+        const dataset1 = d3.range(0, 11).map(x => ({x, y: Math.sin(x)})); // 0 to 10
+        const dataset2 = d3.range(10, 101, 10).map(x => ({x, y: Math.log(x)})); // 10 to 100
+
+        // Total width minus blank space
+        const availableWidth = width - blankSpace;
+
+        // Create custom non-linear x-scale
+        const xScale = x => {
+            const boundary = 10; // Boundary where scale changes
+            if (x <= boundary) {
+                return (x / boundary) * (availableWidth / 2); // Map 0-10 to the first half
+            } else {
+                return (availableWidth / 2) + blankSpace + ((x - boundary) / (100 - boundary)) * (availableWidth / 2); // Map 10-100 to the second half
+            }
+        };
+
+        // Shared y-scale
+        const yScale = d3.scaleLinear()
+            .domain([d3.min([...dataset1, ...dataset2], d => d.y), d3.max([...dataset1, ...dataset2], d => d.y)])
+            .range([height, 0]);
+
+        // Remove boundary points for display
+        const trimmedDataset1 = dataset1.slice(0, dataset1.length - 1); // Exclude the last point
+        const trimmedDataset2 = dataset2.slice(1); // Exclude the first point
+
+        // Line generators
+        const line1 = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y));
+
+        const line2 = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y));
+
+        // Draw first dataset and connect to the left border of blank space
+        svg.append("path")
+            .datum(trimmedDataset1)
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 4 * scaleFactor)
+            .attr("d", line1);
+
+        // Draw a line from last point of dataset1 to the left border of blank space
+        const lastPoint1 = dataset1[dataset1.length - 1];
+        svg.append("line")
+            .attr("x1", xScale(dataset1[dataset1.length - 2].x))
+            .attr("y1", yScale(dataset1[dataset1.length - 2].y))
+            .attr("x2", availableWidth / 2)
+            .attr("y2", yScale(lastPoint1.y))
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 4 * scaleFactor);
+
+        // Draw second dataset and connect to the right border of blank space
+        svg.append("path")
+            .datum(trimmedDataset2)
+            .attr("fill", "none")
+            .attr("stroke", "orange")
+            .attr("stroke-width", 4 * scaleFactor)
+            .attr("d", line2);
+
+        // Draw a line from the right border of blank space to the first point of dataset2
+        const firstPoint2 = dataset2[0];
+        svg.append("line")
+            .attr("x1", availableWidth / 2 + blankSpace)
+            .attr("y1", yScale(firstPoint2.y))
+            .attr("x2", xScale(dataset2[1].x))
+            .attr("y2", yScale(dataset2[1].y))
+            .attr("stroke", "orange")
+            .attr("stroke-width", 4 * scaleFactor);
+
+        // Add a gray line connecting the end of the blue chart to the start of the orange chart
+        svg.append("line")
+            .attr("x1", availableWidth / 2)
+            .attr("y1", yScale(lastPoint1.y))
+            .attr("x2", availableWidth / 2 + blankSpace)
+            .attr("y2", yScale(firstPoint2.y))
+            .attr("stroke", "gray")
+            .attr("stroke-width", 4 * scaleFactor)
+            .attr("stroke-dasharray", `${4 * scaleFactor},${4 * scaleFactor}`); // Dashed for clarity
+
+        // Custom x-axis tick labels for 0-10
+        const xAxis1 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, availableWidth / 2])) // 0-10 mapped to first half
+            .tickValues([0, 2, 4, 6, 8, 10])
+            .tickFormat(d => d);
+
+        // Custom x-axis tick labels for 10-100
+        const xAxis2 = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([10, 100])
+                .range([(availableWidth / 2) + blankSpace, width])) // 10-100 mapped to second half
+            .tickValues([20, 40, 60, 80, 100])
+            .tickFormat(d => d);
+
+        // Draw x-axis for 0-10
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis1);
+
+        // Draw x-axis for 10-100
+        svg.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis2);
+
+        // Add y-axis
+        const yAxis = d3.axisLeft(yScale).ticks(6);
+        svg.append("g").call(yAxis);
+
+        // Add labels
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", height + margin.bottom - 5 + 30)
+            .attr("text-anchor", "middle")
+            .text("Custom Dual Scale X-Axis");
+
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -margin.left + 10)
+            .attr("text-anchor", "middle")
+            .text("Value (Y)");
+
+        // Highlight the blank space
+        svg.append("rect")
+            .attr("x", availableWidth / 2)
+            .attr("y", 0)
+            .attr("width", blankSpace)
+            .attr("height", height)
+            .attr("fill", "lightgray")
+            .attr("opacity", 0.5);
+
+            // Add highlight rectangle group
+        const highlightblankGroup = svg.append("g");
+
+        /// Define the dimensions and paddings for the brush
+        const brushHeight = 30 * scaleFactor; // Brush height
+        const brushMarginTop = 10 * scaleFactor; // Distance between the chart and the brush
+        const brushPadding = 0 * scaleFactor; // Padding around the brush group
+
+        // Add brush group, positioned dynamically
+        const brushGroup = svg.append("g")
+            .attr("class", "brush")
+            .attr("transform", `translate(${brushPadding}, ${height + brushMarginTop})`);
+
+        // Brush scales: Account for the blank space in the middle
+        const xScaleBrush = x => {
+            const midPoint = (width - blankSpace - 2 * brushPadding) / 2; // Middle point of each section
+            if (x <= midPoint) {
+                return (x / midPoint) * 10; // Map 0–10 to the first half
+            } else {
+                const adjustedX = x - midPoint - blankSpace; // Adjust for the blank space
+                return 10 + (adjustedX / midPoint) * 90; // Map 10–100 to the second half
+            }
+        };
+
+        // Inverse scale: Convert pixel positions back to data range
+        const xScaleBrushInvert = value => {
+            const midPoint = (width - blankSpace - 2 * brushPadding) / 2; // Middle point of each section
+            if (value <= 10) {
+                return (value / 10) * midPoint; // Map 0–10 back to the first half
+            } else {
+                const adjustedValue = value - 10; // Adjust for the range after 10
+                return midPoint + blankSpace + (adjustedValue / 90) * midPoint; // Map 10–100 to the second half
+            }
+        };
+
+        // Brush functionality
+        const brush = d3.brushX()
+            .extent([[0, 0], [width - 2 * brushPadding, brushHeight]]) // Brush constrained to the x-axis
+            .on("brush", brushed)
+            .on("end", brushEnded);
+
+        // Attach the brush to the group
+        brushGroup.call(brush);
+
+        // Style the brush for visibility
+        brushGroup.selectAll(".selection")
+            .attr("fill", "lightblue") // Highlight the brushed area
+            .attr("stroke-width", 2);
+
+        // Draw brush x-axis
+        const xBrushAxis = d3.axisBottom()
+            .scale(d3.scaleLinear()
+                .domain([0, 100]) // Full domain (0–100)
+                .range([0, width - 2 * brushPadding])) // Adjust width with padding
+            .ticks(10);
+
+        //brushGroup.append("g")
+        //    .attr("transform", `translate(0, ${brushHeight + 5})`) // Position the axis below the brush
+        //    .call(xBrushAxis);
+
+        // Brushed event handler
+function brushed({ selection }) {
+    if (!selection) return;
+
+    const [x0, x1] = selection.map(d => xScaleBrush(d)); // Map brush pixel positions to data range
+
+    const blankStart = (width - blankSpace - 2 * brushPadding) / 2; // Start of blank space in pixels
+    const blankEnd = blankStart + blankSpace; // End of blank space in pixels
+
+    // Check if the starting part (x0) is in the blank zone
+    if (xScaleBrushInvert(x0) > blankStart && xScaleBrushInvert(x0) < blankEnd) {
+        svg.selectAll(".highlight").remove(); // Clear highlights
+        brushGroup.call(brush.move, null); // Clear the brush selection
+        return;
+    }
+
+    svg.selectAll(".highlight").remove(); // Clear previous highlights
+
+    // Highlight selected range on the main chart
+    svg.append("rect")
+        .attr("class", "highlight")
+        .attr("x", xScaleBrushInvert(x0))
+        .attr("width", xScaleBrushInvert(x1) - xScaleBrushInvert(x0))
+        .attr("y", 0)
+        .attr("height", height)
+        .attr("fill", "yellow")
+        .attr("opacity", 0.3);
+}
+
+// Brush end event handler
+function brushEnded({ selection }) {
+    if (!selection) {
+        svg.selectAll(".highlight").remove(); // Clear highlights if brush is cleared
+        return;
+    }
+
+    const [x0, x1] = selection.map(d => xScaleBrush(d)); // Map brush pixel positions to data range
+
+    const blankStart = (width - blankSpace - 2 * brushPadding) / 2; // Start of blank space in pixels
+    const blankEnd = blankStart + blankSpace; // End of blank space in pixels
+
+    // Check if the starting part (x0) is in the blank zone
+    if (xScaleBrushInvert(x0) > blankStart && xScaleBrushInvert(x0) < blankEnd) {
+        brushGroup.call(brush.move, null); // Clear the brush selection
+        return;
+    }
+
+    console.log(`Brushed range: [${x0.toFixed(1)}, ${x1.toFixed(1)}]`);
+}
+        // Define the desired initial range in the data space
+        const initialBrushRange = [2, 6];
+
+        // Attach the brush to the group and initialize it
+        brushGroup.call(brush)
+            .call(brush.move, initialBrushRange.map(xScaleBrushInvert)); // Initialize brush to 2–20
+
+
+    </script>
+</body>
+</html>

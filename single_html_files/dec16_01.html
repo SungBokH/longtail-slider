@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iterate, Iterate, and Iterate</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+    body {
+        margin:0; 
+        padding:0;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+    }
+    h4 {
+        margin:0;
+        padding:0;
+        line-height:1;
+    }
+    #chart {
+        margin-top:10px;
+        padding:0;
+    }
+
+    #chart3-container {
+        display:inline-block;
+        vertical-align:top;
+        margin-left:40px; /* chart3 to the right of chart 1 */
+    }
+
+    .line {
+        fill: none;
+        stroke: black;
+        stroke-width: 2;
+    }
+
+    .prism {
+        fill: #B0C4DE;
+        stroke: #B0C4DE;
+        opacity: 0.7;
+        transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .prism:hover {
+        cursor: pointer;
+        stroke: #000;
+        stroke-width: 2;
+    }
+
+    .connector-area {
+        fill: lightgray;
+        opacity: 0.5;
+    }
+    .connector-line {
+        stroke: gray;
+        stroke-width: 2;
+    }
+
+    .ref-line {
+        stroke: #999;
+        stroke-width: 1;
+        stroke-dasharray: 2,2;
+    }
+    .ref-connector-area {
+        fill: #ccc;
+        opacity: 0.3;
+    }
+    .ref-connector-line {
+        stroke: #999;
+        stroke-width: 1;
+        stroke-dasharray: 2,2;
+    }
+
+    .x-axis-line {
+        stroke: black;
+        stroke-width: 1;
+    }
+
+    .tick-line {
+        stroke: #333;
+        stroke-width: 1;
+    }
+
+    .tick-label {
+        fill: #333;
+        font-size: 14px;
+    }
+
+    .bar {
+        fill: steelblue;
+        opacity: 0.7;
+    }
+    .bar.highlighted {
+        fill: darkorange;
+    }
+    .bar:hover {
+        opacity:1;
+        stroke:#000;
+    }
+
+    .ref-text {
+        fill: #333;
+        font-size: 12px;
+    }
+
+    /* Brush styles */
+    .selection {
+        fill: rgba(70,130,180,0.3); /* highlight color */
+        stroke: #4682B4;
+        stroke-width: 1;
+    }
+
+    .handle {
+        fill: #fff;
+        stroke: #4682B4;
+        cursor: ew-resize;
+    }
+
+    .brush3 .selection {
+        fill: rgba(255,165,0,0.3);
+        stroke: orange;
+    }
+    .brush3 .handle {
+        fill: #fff;
+        stroke: orange;
+    }
+</style>
+</head>
+<body>
+    <div class="charts-container">
+        <h4>Pareto (Percentile)</h4>
+        <div id="chart"></div>
+    </div>
+    <div id="chart3-container">
+        <h4>Gaussian (salary in France)</h4>
+        <div id="chart3"></div>
+    </div>
+    <script>
+        const scaleFactor = 0.56;
+        const originalWidth = 600, originalHeight = 400;
+
+        let height = (originalHeight * scaleFactor) - 40; 
+        const width = originalWidth * scaleFactor; 
+
+        const margin = { top: 20, right: 50*scaleFactor, bottom: 40*scaleFactor, left: 80*scaleFactor };
+        const blankSpace = 20 * scaleFactor;
+        const brushOffset = 10; // small vertical offset below x-axis
+        const brushHeight = 20 * scaleFactor; 
+        const totalHeight = height + brushHeight + brushOffset + margin.top + margin.bottom;
+
+        const availableWidth = width - blankSpace;
+
+        const wealthTop1 = d3.range(0, 1.1, 0.1).map(i => ({
+            x: i,
+            y: 1000000 - 600000 * Math.pow(i,0.5)
+        }));
+
+        const wealthNext9 = d3.range(1, 11, 1).map(i => ({
+            x: i,
+            y: 400000 * Math.pow(0.93, i - 1)
+        }));
+
+        const wealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: 200000 * Math.pow(0.85, (i-10)/10)
+        }));
+
+        const rectWidth = 40 * scaleFactor; 
+        const apexOffsetTop = 20 * scaleFactor; 
+        const yForPrismTop = apexOffsetTop; 
+
+        // Initially selected domain intervals (may change upon user brush interaction)
+        let chart1DomainSelection = [1,10];           // Initially highlight [1,10] in Chart 1
+        let chart3DomainSelection = [100000,1000000]; // Initially highlight [100K,1M] in Chart 3
+
+        //----------------------------
+        // Chart 1
+        //----------------------------
+        let rectX1 = availableWidth * 0.2; 
+        let rectX2 = availableWidth * 0.6;
+
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", totalHeight);
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        const yScaleTop1 = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop1, d => d.y)])
+            .range([height, yForPrismTop]);
+
+        const yScaleNext9 = d3.scaleLinear()
+            .domain([0, d3.max(wealthNext9, d => d.y)])
+            .range([height, yForPrismTop]);
+
+        const yScaleBottom90 = d3.scaleLinear()
+            .domain([0, d3.max(wealthBottom90, d => d.y)])
+            .range([height, yForPrismTop]);
+
+        function chartXPos(d) {
+            if (d < 1) {
+                return d3.scaleLinear().domain([0,1]).range([0, rectX1])(d);
+            } else if (d === 1) {
+                return rectX1 + rectWidth; 
+            } else if (d > 1 && d < 10) {
+                return d3.scaleLinear().domain([1,10]).range([rectX1+rectWidth, rectX2])(d);
+            } else if (d === 10) {
+                return rectX2 + rectWidth;
+            } else {
+                return d3.scaleLinear().domain([10,100]).range([rectX2+rectWidth, availableWidth])(d);
+            }
+        }
+
+        const highlightRect1 = g.append("rect")
+            .attr("y", yForPrismTop)
+            .attr("height", height - yForPrismTop)
+            .attr("fill", "rgba(70,130,180,0.2)")
+            .attr("display","none");
+
+        const top1LinePath = g.append("path").datum(wealthTop1).attr("class", "line");
+        const next9LinePath = g.append("path").datum(wealthNext9).attr("class", "line");
+        const bottom90LinePath = g.append("path").datum(wealthBottom90).attr("class", "line");
+
+        const connectorArea1 = g.append("polygon").attr("class", "connector-area");
+        const connectorLine1 = g.append("line").attr("class", "connector-line");
+        const connectorArea2 = g.append("polygon").attr("class", "connector-area");
+        const connectorLine2 = g.append("line").attr("class", "connector-line");
+
+        const refValues = [100000, 30000]; 
+        const refGroup = g.append("g");
+        const refConnectorAreas1 = [];
+        const refConnectorLines1 = [];
+        const refConnectorAreas2 = [];
+        const refConnectorLines2 = [];
+
+        refValues.forEach((val, i) => {
+            refGroup.append("line").attr("class", "ref-line top1-ref-line");
+            refGroup.append("line").attr("class", "ref-line next9-ref-line");
+            refGroup.append("line").attr("class", "ref-line bottom90-ref-line");
+
+            refConnectorAreas1[i] = g.append("polygon").attr("class", "ref-connector-area");
+            refConnectorLines1[i] = g.append("line").attr("class", "ref-connector-line");
+            refConnectorAreas2[i] = g.append("polygon").attr("class", "ref-connector-area");
+            refConnectorLines2[i] = g.append("line").attr("class", "ref-connector-line");
+        });
+
+        g.append("line")
+            .attr("class", "x-axis-line")
+            .attr("x1", 0)
+            .attr("x2", availableWidth)
+            .attr("y1", height)
+            .attr("y2", height);
+
+        const brush1 = d3.brushX()
+            .extent([[0, height+brushOffset],[availableWidth, height+brushOffset+brushHeight]])
+            // Call brushedChart1 on both brush and end to remove delay
+            .on("brush end", brushedChart1);
+
+        const gBrush1 = g.append("g")
+            .attr("class","brush1")
+            .call(brush1);
+
+        function setBrush1Selection() {
+            const left = chartXPos(chart1DomainSelection[0]);
+            const right = chartXPos(chart1DomainSelection[1]);
+            gBrush1.call(brush1.move, [left, right]);
+        }
+
+        function brushedChart1(event) {
+            const s = event.selection;
+            if (!s) {
+                highlightRect1.attr("display","none");
+                return;
+            }
+            const [pxLeft, pxRight] = s;
+            highlightRect1
+                .attr("x", pxLeft)
+                .attr("width", pxRight - pxLeft)
+                .attr("display", null);
+
+            // On brush end, update stored domain
+            if (event.type === "end") {
+                const domainLeft = invertChart1XPos(pxLeft);
+                const domainRight = invertChart1XPos(pxRight);
+                chart1DomainSelection = [domainLeft, domainRight];
+            }
+        }
+
+        function invertChart1XPos(px) {
+            if (px <= rectX1) {
+                const scale = d3.scaleLinear().domain([0,rectX1]).range([0,1]);
+                return scale(px);
+            } else if (px <= rectX1+rectWidth) {
+                return 1;
+            } else if (px <= rectX2) {
+                const scale = d3.scaleLinear().domain([rectX1+rectWidth, rectX2]).range([1,10]);
+                return scale(px);
+            } else if (px <= rectX2+rectWidth) {
+                return 10;
+            } else {
+                const scale = d3.scaleLinear().domain([rectX2+rectWidth, availableWidth]).range([10,100]);
+                return scale(px);
+            }
+        }
+
+        function updateCharts() {
+            const xScaleTop1 = d3.scaleLinear().domain([0,1]).range([0, rectX1]);
+            const xScaleNext9 = d3.scaleLinear().domain([1,10]).range([rectX1+rectWidth, rectX2]);
+            const xScaleBottom90 = d3.scaleLinear().domain([10,100]).range([rectX2+rectWidth, availableWidth]);
+
+            const lineTop1 = d3.line().x(d => xScaleTop1(d.x)).y(d => yScaleTop1(d.y));
+            const lineNext9 = d3.line().x(d => (d.x===1 ? rectX1+rectWidth : xScaleNext9(d.x))).y(d => yScaleNext9(d.y));
+            const lineBottom90 = d3.line().x(d => (d.x===10 ? rectX2+rectWidth : xScaleBottom90(d.x))).y(d => yScaleBottom90(d.y));
+
+            top1LinePath.attr("d", lineTop1);
+            next9LinePath.attr("d", lineNext9);
+            bottom90LinePath.attr("d", lineBottom90);
+
+            const top1End = wealthTop1.find(d => d.x === 1);
+            const next9Start = wealthNext9.find(d => d.x === 1);
+            const next9End = wealthNext9.find(d => d.x === 10);
+            const bottom90Start = wealthBottom90.find(d => d.x === 10);
+
+            const top1EndX = xScaleTop1(1),
+                  top1EndY = yScaleTop1(top1End.y),
+                  next9StartX = rectX1+rectWidth,
+                  next9StartY = yScaleNext9(next9Start.y),
+                  next9EndX = xScaleNext9(10),
+                  next9EndY = yScaleNext9(next9End.y),
+                  bottom90StartX = rectX2+rectWidth,
+                  bottom90StartY = yScaleBottom90(bottom90Start.y);
+
+            connectorArea1
+                .attr("points",
+                    `${top1EndX},${top1EndY} 
+                     ${top1EndX},${height} 
+                     ${next9StartX},${height} 
+                     ${next9StartX},${next9StartY}`
+                );
+            connectorLine1
+                .attr("x1", top1EndX)
+                .attr("y1", top1EndY)
+                .attr("x2", next9StartX)
+                .attr("y2", next9StartY);
+
+            connectorArea2
+                .attr("points",
+                    `${next9EndX},${next9EndY} 
+                     ${next9EndX},${height} 
+                     ${bottom90StartX},${height} 
+                     ${bottom90StartX},${bottom90StartY}`
+                );
+            connectorLine2
+                .attr("x1", next9EndX)
+                .attr("y1", next9EndY)
+                .attr("x2", bottom90StartX)
+                .attr("y2", bottom90StartY);
+
+            g.selectAll(".top-y-tick,.mid-y-tick,.bottom-y-tick,.x-tick").remove();
+
+            const formatY = d => {
+                let s = d3.format(".2s")(d);
+                s = s.replace('k','K');
+                return s;
+            };
+
+            const topTicks = yScaleTop1.ticks(5);
+            const midTicks = yScaleNext9.ticks(5);
+            const bottomTicks = yScaleBottom90.ticks(5);
+
+            const leftXTicks = d3.range(0, 1.01, 0.2).map(d => +d.toFixed(1));
+            const midXTicksArr = d3.range(1, 11, 1);
+            const rightXTicks = d3.range(10, 101, 10);
+            const allXTicks = [...leftXTicks, ...midXTicksArr, ...rightXTicks];
+
+            // Y-ticks for top segment
+            const topTickSelection = g.selectAll(".top-y-tick").data(topTicks).enter().append("g").attr("class", "top-y-tick");
+            topTickSelection.append("line").attr("class", "tick-line");
+            topTickSelection.append("text").attr("class", "tick-label");
+            topTickSelection.each(function(d) {
+                const yPos = yScaleTop1(d);
+                d3.select(this).select("line")
+                    .attr("x1", rectX1)
+                    .attr("x2", rectX1 - 8)
+                    .attr("y1", yPos)
+                    .attr("y2", yPos);
+                d3.select(this).select("text")
+                    .attr("x", rectX1 - 10)
+                    .attr("y", yPos)
+                    .attr("text-anchor", "end")
+                    .text(formatY(d));
+            });
+
+            // mid-y-ticks
+            const midTickSelection = g.selectAll(".mid-y-tick").data(midTicks).enter().append("g").attr("class", "mid-y-tick");
+            midTickSelection.append("line").attr("class", "tick-line");
+            midTickSelection.append("text").attr("class", "tick-label");
+            midTickSelection.each(function(d) {
+                const yPos = yScaleNext9(d);
+                d3.select(this).select("line")
+                    .attr("x1", rectX1+rectWidth)
+                    .attr("x2", rectX1+rectWidth - 8)
+                    .attr("y1", yPos)
+                    .attr("y2", yPos);
+                d3.select(this).select("text")
+                    .attr("x", rectX1+rectWidth + 10)
+                    .attr("y", yPos)
+                    .attr("text-anchor", "start")
+                    .text(formatY(d));
+            });
+
+            // bottom-y-ticks
+            const bottomTickSelection = g.selectAll(".bottom-y-tick").data(bottomTicks).enter().append("g").attr("class", "bottom-y-tick");
+            bottomTickSelection.append("line").attr("class", "tick-line");
+            bottomTickSelection.append("text").attr("class", "tick-label");
+            bottomTickSelection.each(function(d) {
+                const yPos = yScaleBottom90(d);
+                d3.select(this).select("line")
+                    .attr("x1", rectX2+rectWidth)
+                    .attr("x2", rectX2+rectWidth + 8)
+                    .attr("y1", yPos)
+                    .attr("y2", yPos);
+                d3.select(this).select("text")
+                    .attr("x", rectX2+rectWidth + 10)
+                    .attr("y", yPos)
+                    .attr("text-anchor", "start")
+                    .text(formatY(d));
+            });
+
+            // x-ticks
+            const candidateTicks = g.selectAll(".x-tick").data(allXTicks).enter().append("g").attr("class", "x-tick");
+            candidateTicks.append("line").attr("class", "tick-line");
+            candidateTicks.append("text").attr("class", "tick-label");
+
+            candidateTicks.each(function(d) {
+                const xPos = chartXPos(d);
+                d3.select(this).select("line")
+                    .attr("x1", xPos)
+                    .attr("x2", xPos)
+                    .attr("y1", height)
+                    .attr("y2", height - 8);
+                d3.select(this).select("text")
+                    .attr("x", xPos)
+                    .attr("y", height + 14)
+                    .attr("text-anchor", "middle")
+                    .text(d);
+            });
+
+            // hide overlapping x-tick labels
+            const textNodes = candidateTicks.select("text").nodes();
+            let lastX = -Infinity;
+            for (let i = 0; i < textNodes.length; i++) {
+                const bbox = textNodes[i].getBBox();
+                const thisX = parseFloat(textNodes[i].getAttribute("x"));
+                const leftEdge = thisX - bbox.width/2;
+                if (leftEdge < lastX) {
+                    d3.select(textNodes[i].parentNode).style("display","none");
+                } else {
+                    lastX = thisX + bbox.width/2 + 2; 
+                }
+            }
+
+            const allTop1 = refGroup.selectAll(".top1-ref-line").nodes();
+            const allNext9 = refGroup.selectAll(".next9-ref-line").nodes();
+            const allBottom90 = refGroup.selectAll(".bottom90-ref-line").nodes();
+
+            refValues.forEach((val, i) => {
+                const topY = yScaleTop1(val);
+                const midY = yScaleNext9(val);
+                const botY = yScaleBottom90(val);
+
+                d3.select(allTop1[i])
+                    .attr("x1",0).attr("x2",rectX1)
+                    .attr("y1",topY).attr("y2",topY);
+
+                d3.select(allNext9[i])
+                    .attr("x1",rectX1+rectWidth).attr("x2",rectX2)
+                    .attr("y1",midY).attr("y2",midY);
+
+                d3.select(allBottom90[i])
+                    .attr("x1",rectX2+rectWidth).attr("x2",availableWidth)
+                    .attr("y1",botY).attr("y2",botY);
+
+                const top1EndX = xScaleTop1(1);
+                const next9StartX = rectX1+rectWidth;
+                const next9StartY = yScaleNext9(wealthNext9.find(d => d.x===1).y);
+                const next9EndX = xScaleNext9(10);
+                const next9EndY = yScaleNext9(wealthNext9.find(d=>d.x===10).y);
+                const bottom90StartX = rectX2+rectWidth;
+                const bottom90StartY = yScaleBottom90(wealthBottom90.find(d=>d.x===10).y);
+
+                refConnectorAreas1[i]
+                    .attr("points",
+                        `${top1EndX},${topY} 
+                         ${top1EndX},${height} 
+                         ${next9StartX},${height} 
+                         ${next9StartX},${midY}`
+                    );
+                refConnectorLines1[i]
+                    .attr("x1", top1EndX).attr("y1", topY)
+                    .attr("x2", next9StartX).attr("y2", next9StartY);
+
+                refConnectorAreas2[i]
+                    .attr("points",
+                        `${next9EndX},${midY} 
+                         ${next9EndX},${height} 
+                         ${bottom90StartX},${height} 
+                         ${bottom90StartX},${botY}`
+                    );
+                refConnectorLines2[i]
+                    .attr("x1", next9EndX).attr("y1", midY)
+                    .attr("x2", bottom90StartX).attr("y2", botY);
+            });
+
+            // Re-apply the brush selection for Chart 1 with updated domain selection
+            setBrush1Selection();
+        }
+
+        const drag1 = d3.drag()
+            .on("start", function () { d3.select(this).raise(); })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                newX = Math.max(0, Math.min(rectX2 - rectWidth - 50, newX));
+                rectX1 = newX;
+                updatePrisms();
+            });
+
+        const drag2 = d3.drag()
+            .on("start", function () { d3.select(this).raise(); })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                newX = Math.max(rectX1 + rectWidth + 50, Math.min(availableWidth - rectWidth, newX));
+                rectX2 = newX;
+                updatePrisms();
+            });
+
+        function createPrism(x, y, dragBehavior) {
+            const group = g.append("g").call(dragBehavior);
+            group.append("polygon")
+                .attr("class", "prism")
+                .attr("points", 
+                    `${(x+rectWidth/2)},${y - apexOffsetTop} ` +
+                    `${x},${y} ` +
+                    `${x},${height} ` +
+                    `${x+rectWidth},${height} ` +
+                    `${x+rectWidth},${y}`
+                );
+            return group;
+        }
+
+        const prism1 = createPrism(rectX1, yForPrismTop, drag1);
+        const prism2 = createPrism(rectX2, yForPrismTop, drag2);
+
+        function updatePrisms() {
+            prism1.select(".prism").attr("points",
+                `${(rectX1+rectWidth/2)},${yForPrismTop - apexOffsetTop} ` +
+                `${rectX1},${yForPrismTop} ` +
+                `${rectX1},${height} ` +
+                `${rectX1+rectWidth},${height} ` +
+                `${rectX1+rectWidth},${yForPrismTop}`
+            );
+
+            prism2.select(".prism").attr("points",
+                `${(rectX2+rectWidth/2)},${yForPrismTop - apexOffsetTop} ` +
+                `${rectX2},${yForPrismTop} ` +
+                `${rectX2},${height} ` +
+                `${rectX2+rectWidth},${height} ` +
+                `${rectX2+rectWidth},${yForPrismTop}`
+            );
+
+            updateCharts();
+        }
+
+        updateCharts(); // chart 1 initial
+
+        //----------------------------
+        // Chart 3
+        //----------------------------
+        let rectX1_3 = availableWidth * 0.2;  
+        let rectX2_3 = availableWidth * 0.6;  
+
+        const svg3 = d3.select("#chart3")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", totalHeight);
+
+        const g3 = svg3.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        const maxSalary = 70000000; 
+        const randomNormal = d3.randomNormal(9,1.2); 
+        const N = 10000; 
+        let salaries = d3.range(N).map(() => Math.exp(randomNormal()));
+        const maxVal = d3.max(salaries);
+        const scaleFactorSalary = maxSalary / maxVal;
+        salaries = salaries.map(d => d * scaleFactorSalary);
+
+        function chartXPos3(value) {
+            if (value < 100000) {
+                return d3.scaleLinear().domain([0,100000]).range([0, rectX1_3])(value);
+            } else if (value === 100000) {
+                return rectX1_3 + rectWidth;
+            } else if (value > 100000 && value < 1000000) {
+                return d3.scaleLinear().domain([100000,1000000]).range([rectX1_3+rectWidth, rectX2_3])(value);
+            } else if (value === 1000000) {
+                return rectX2_3 + rectWidth;
+            } else {
+                return d3.scaleLinear().domain([1000000, maxSalary]).range([rectX2_3+rectWidth, availableWidth])(value);
+            }
+        }
+
+        function invertChartXPos3(px) {
+            if (px <= rectX1_3) {
+                const scale = d3.scaleLinear().domain([0,rectX1_3]).range([0,100000]);
+                return scale(px);
+            } else if (px <= rectX1_3+rectWidth) {
+                return 100000;
+            } else if (px <= rectX2_3) {
+                const scale = d3.scaleLinear().domain([rectX1_3+rectWidth, rectX2_3]).range([100000,1000000]);
+                return scale(px);
+            } else if (px <= rectX2_3+rectWidth) {
+                return 1000000;
+            } else {
+                const scale = d3.scaleLinear().domain([rectX2_3+rectWidth, availableWidth]).range([1000000,70000000]);
+                return scale(px);
+            }
+        }
+
+        function makeBins(data) {
+            let binSize1 = 5000;
+            let binSize2 = 50000;
+            let binSize3 = 3450000; 
+
+            function binRange(start, end, size) {
+                let arr = [];
+                for (let v = start; v < end; v += size) {
+                    arr.push({x0: v, x1: v+size, values: []});
+                }
+                return arr;
+            }
+
+            let bins1 = binRange(0,100000,binSize1);
+            let bins2 = binRange(100000,1000000,binSize2);
+            let bins3 = binRange(1000000,maxSalary,binSize3);
+            const allBins = bins1.concat(bins2).concat(bins3);
+
+            data = data.slice().sort((a,b)=>a-b);
+            for (let salary of data) {
+                for (let b of allBins) {
+                    if (salary>=b.x0 && salary<b.x1) {
+                        b.values.push(salary);
+                        break;
+                    }
+                }
+            }
+
+            return allBins.filter(b=>b.values.length>0);
+        }
+
+        const bins = makeBins(salaries);
+
+        const seg1Bins = bins.filter(b => b.x0<100000);
+        const seg2Bins = bins.filter(b => b.x0>=100000 && b.x0<1000000);
+        const seg3Bins = bins.filter(b => b.x0>=1000000);
+
+        const s1Max = seg1Bins.length>0 ? d3.max(seg1Bins,d=>d.values.length):0;
+        const s2Max = seg2Bins.length>0 ? d3.max(seg2Bins,d=>d.values.length):0;
+        const s3Max = seg3Bins.length>0 ? d3.max(seg3Bins,d=>d.values.length):0;
+
+        const yScaleS1 = d3.scaleLinear().domain([0,s1Max]).range([height,yForPrismTop]);
+        const yScaleS2 = d3.scaleLinear().domain([0,s2Max]).range([height,yForPrismTop]);
+        const yScaleS3 = d3.scaleLinear().domain([0,s3Max]).range([height,yForPrismTop]);
+
+        let barGroup3 = g3.append("g");
+
+        function getYScaleForBin(b) {
+            if (b.x0<100000) return yScaleS1;
+            else if (b.x0<1000000) return yScaleS2;
+            else return yScaleS3;
+        }
+
+        g3.append("line")
+            .attr("class", "x-axis-line3")
+            .attr("x1",0)
+            .attr("x2",availableWidth)
+            .attr("y1",height)
+            .attr("y2",height)
+            .attr("stroke","black");
+
+        const brush3 = d3.brushX()
+            .extent([[0, height+brushOffset],[availableWidth, height+brushOffset+brushHeight]])
+            // Call brushedChart3 on both brush and end
+            .on("brush end", brushedChart3);
+
+        const gBrush3 = g3.append("g")
+            .attr("class","brush3")
+            .call(brush3);
+
+        function setBrush3Selection() {
+            const left = chartXPos3(chart3DomainSelection[0]);
+            const right = chartXPos3(chart3DomainSelection[1]);
+            gBrush3.call(brush3.move, [left,right]);
+        }
+
+        function brushedChart3(event) {
+            const s = event.selection;
+            if (!s) {
+                barGroup3.selectAll(".bar").classed("highlighted",false);
+                return;
+            }
+            const [pxLeft, pxRight] = s;
+            const domainLeft = invertChartXPos3(pxLeft);
+            const domainRight = invertChartXPos3(pxRight);
+
+            // Highlight continuously during brush
+            barGroup3.selectAll(".bar")
+                .classed("highlighted", d => {
+                    return d.x0 >= domainLeft && d.x1 <= domainRight;
+                });
+
+            // Update stored domain selection on end
+            if (event.type === "end") {
+                chart3DomainSelection = [domainLeft, domainRight];
+            }
+        }
+
+        function updateCharts3() {
+            barGroup3.selectAll(".bar").remove();
+
+            barGroup3.selectAll(".bar")
+                .data(bins)
+                .enter().append("rect")
+                .attr("class","bar")
+                .attr("x", d => {
+                    let x0Pos = chartXPos3(d.x0);
+                    let x1Pos = chartXPos3(d.x1);
+                    return Math.min(x0Pos,x1Pos);
+                })
+                .attr("y", d=> {
+                    const scale = getYScaleForBin(d);
+                    return scale(d.values.length);
+                })
+                .attr("width", d => {
+                    let x0Pos = chartXPos3(d.x0);
+                    let x1Pos = chartXPos3(d.x1);
+                    return Math.abs(x1Pos - x0Pos)-1; 
+                })
+                .attr("height", d => {
+                    const scale = getYScaleForBin(d);
+                    return height - scale(d.values.length);
+                });
+
+            g3.selectAll(".y-tick3,.x-tick3,.seg-scale-axis").remove();
+
+            const xValuesForTicks = [0,100000,1000000,70000000];
+            const xTickSelection = g3.selectAll(".x-tick3").data(xValuesForTicks).enter().append("g").attr("class","x-tick3");
+            xTickSelection.append("line").attr("class","tick-line");
+            xTickSelection.append("text").attr("class","tick-label");
+            xTickSelection.each(function(d) {
+                const xPos = chartXPos3(d);
+                d3.select(this).select("line")
+                    .attr("x1", xPos)
+                    .attr("x2", xPos)
+                    .attr("y1", height)
+                    .attr("y2", height - 8);
+                d3.select(this).select("text")
+                    .attr("x", xPos)
+                    .attr("y", height + 14)
+                    .attr("text-anchor","middle")
+                    .text(d<1000000 ? (d>=100000 ? d/1000+"K" : d) : (d/1000000+"M"));
+            });
+
+            function drawSegmentAxis(xPos, scale) {
+                const axisGroup = g3.append("g").attr("class","seg-scale-axis");
+                const ticks = scale.ticks(5);
+                axisGroup.selectAll(".seg-y-tick").data(ticks).enter().append("g")
+                    .attr("class","seg-y-tick")
+                    .each(function(d) {
+                        const yPos = scale(d);
+                        d3.select(this).append("line")
+                            .attr("class","tick-line")
+                            .attr("x1", xPos)
+                            .attr("x2", xPos - 8)
+                            .attr("y1", yPos)
+                            .attr("y2", yPos);
+                        d3.select(this).append("text")
+                            .attr("class","tick-label")
+                            .attr("x", xPos - 10)
+                            .attr("y", yPos)
+                            .attr("text-anchor","end")
+                            .text(d);
+                    });
+
+                axisGroup.append("line")
+                    .attr("class","tick-line")
+                    .attr("x1", xPos)
+                    .attr("x2", xPos)
+                    .attr("y1", height)
+                    .attr("y2", yForPrismTop)
+                    .attr("stroke","black");
+            }
+
+            if (s1Max > 0) drawSegmentAxis(0, yScaleS1);
+            if (s2Max > 0) drawSegmentAxis(rectX1_3+rectWidth, yScaleS2);
+            if (s3Max > 0) drawSegmentAxis(rectX2_3+rectWidth, yScaleS3);
+
+            // Re-apply the brush selection for Chart 3 with updated domain selection
+            setBrush3Selection();
+        }
+
+        const drag1_3 = d3.drag()
+            .on("start", function () { d3.select(this).raise(); })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                newX = Math.max(0, Math.min(rectX2_3 - rectWidth - 50, newX));
+                rectX1_3 = newX;
+                updatePrisms3();
+            });
+
+        const drag2_3 = d3.drag()
+            .on("start", function () { d3.select(this).raise(); })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                newX = Math.max(rectX1_3 + rectWidth + 50, Math.min(availableWidth - rectWidth, newX));
+                rectX2_3 = newX;
+                updatePrisms3();
+            });
+
+        function createPrism3(x, y, dragBehavior) {
+            const group = g3.append("g").call(dragBehavior);
+            group.append("polygon")
+                .attr("class", "prism")
+                .attr("points",
+                    `${(x+rectWidth/2)},${y - apexOffsetTop} ` +
+                    `${x},${y} ` +
+                    `${x},${height} ` +
+                    `${x+rectWidth},${height} ` +
+                    `${x+rectWidth},${y}`
+                );
+            return group;
+        }
+
+        const prism1_3 = createPrism3(rectX1_3, yForPrismTop, drag1_3);
+        const prism2_3 = createPrism3(rectX2_3, yForPrismTop, drag2_3);
+
+        function updatePrisms3() {
+            prism1_3.select(".prism").attr("points",
+                `${(rectX1_3+rectWidth/2)},${yForPrismTop - apexOffsetTop} ` +
+                `${rectX1_3},${yForPrismTop} ` +
+                `${rectX1_3},${height} ` +
+                `${rectX1_3+rectWidth},${height} ` +
+                `${rectX1_3+rectWidth},${yForPrismTop}`
+            );
+
+            prism2_3.select(".prism").attr("points",
+                `${(rectX2_3+rectWidth/2)},${yForPrismTop - apexOffsetTop} ` +
+                `${rectX2_3},${yForPrismTop} ` +
+                `${rectX2_3},${height} ` +
+                `${rectX2_3+rectWidth},${height} ` +
+                `${rectX2_3+rectWidth},${yForPrismTop}`
+            );
+
+            updateCharts3();
+        }
+
+        updateCharts3(); // chart 3 initial draw
+    </script>
+</body>
+</html>

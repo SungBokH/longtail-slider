@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Multiple Chart Selections from Multi-features Dataset.</title>
+
+  
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .histogram-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 40px;
+    }
+    .chart {
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+    .axis path,
+    .axis line {
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+    .brush .selection {
+      fill: #777;
+      fill-opacity: 0.3;
+      stroke: #fff;
+      shape-rendering: crispEdges;
+    }
+    .bar-total {
+      fill: lightgray;
+    }
+    .bar-selected {
+      fill: steelblue;
+    }
+    .title {
+      font-weight: bold;
+      text-align: center;
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Brushing multiple features about the dataset. </h1>
+
+
+<div class="histogram-container" id="histograms">
+  <!-- Four histogram containers will be appended by script -->
+</div>
+
+<script>
+
+// -----------------------------------------------------------------------------
+// 1. SYNTHETIC "CAR" DATASET
+// -----------------------------------------------------------------------------
+const data = [
+  // Create ~20–30 random "car" data points as an example
+  // (In real scenarios, you'd load these from a CSV or JSON file.)
+  {id: 1,  horsepower: 110, mpg: 30, weight: 2200, year: 2012},
+  {id: 2,  horsepower: 150, mpg: 25, weight: 2500, year: 2015},
+  {id: 3,  horsepower: 90,  mpg: 34, weight: 1800, year: 2009},
+  {id: 4,  horsepower: 220, mpg: 20, weight: 3000, year: 2018},
+  {id: 5,  horsepower: 160, mpg: 24, weight: 2700, year: 2013},
+  {id: 6,  horsepower: 130, mpg: 29, weight: 2400, year: 2011},
+  {id: 7,  horsepower: 95,  mpg: 36, weight: 2000, year: 2008},
+  {id: 8,  horsepower: 180, mpg: 22, weight: 3100, year: 2019},
+  {id: 9,  horsepower: 200, mpg: 21, weight: 3200, year: 2020},
+  {id: 10, horsepower: 105, mpg: 32, weight: 1900, year: 2007},
+  {id: 11, horsepower: 140, mpg: 28, weight: 2600, year: 2010},
+  {id: 12, horsepower: 170, mpg: 23, weight: 2900, year: 2017},
+  {id: 13, horsepower: 115, mpg: 31, weight: 2100, year: 2014},
+  {id: 14, horsepower: 200, mpg: 19, weight: 3400, year: 2021},
+  {id: 15, horsepower: 150, mpg: 27, weight: 2550, year: 2016},
+  {id: 16, horsepower: 185, mpg: 22, weight: 3200, year: 2022},
+  {id: 17, horsepower: 120, mpg: 35, weight: 2300, year: 2009},
+  {id: 18, horsepower: 100, mpg: 33, weight: 2100, year: 2006},
+  {id: 19, horsepower: 210, mpg: 18, weight: 3300, year: 2023},
+  {id: 20, horsepower: 130, mpg: 29, weight: 2400, year: 2011}
+];
+
+// We’ll create histograms for these 4 features:
+const features = [
+  { key: 'horsepower', label: 'Horsepower' },
+  { key: 'mpg',        label: 'MPG'        },
+  { key: 'weight',     label: 'Weight (lbs)' },
+  { key: 'year',       label: 'Year'       }
+];
+
+// -----------------------------------------------------------------------------
+// 2. GLOBAL FILTERS (store current [min, max] brush range for each feature)
+// -----------------------------------------------------------------------------
+const filters = {
+  horsepower: [ d3.min(data, d => d.horsepower), d3.max(data, d => d.horsepower) ],
+  mpg:        [ d3.min(data, d => d.mpg),        d3.max(data, d => d.mpg)        ],
+  weight:     [ d3.min(data, d => d.weight),     d3.max(data, d => d.weight)     ],
+  year:       [ d3.min(data, d => d.year),       d3.max(data, d => d.year)       ],
+};
+
+// -----------------------------------------------------------------------------
+// 3. FUNCTIONS TO CHECK IF A DATA POINT IS SELECTED (WITHIN ALL FILTERS)
+// -----------------------------------------------------------------------------
+function isSelected(d) {
+  return d.horsepower >= filters.horsepower[0] && d.horsepower <= filters.horsepower[1]
+      && d.mpg        >= filters.mpg[0]        && d.mpg        <= filters.mpg[1]
+      && d.weight     >= filters.weight[0]     && d.weight     <= filters.weight[1]
+      && d.year       >= filters.year[0]       && d.year       <= filters.year[1];
+}
+
+// -----------------------------------------------------------------------------
+// 4. CREATE HISTOGRAMS
+// -----------------------------------------------------------------------------
+
+// Dimensions for each histogram
+const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+const width  = 300 - margin.left - margin.right;
+const height = 200 - margin.top - margin.bottom;
+
+// We’ll keep references to histogram config in an array
+const histConfigs = [];
+
+// Container for all charts
+const container = d3.select("#histograms");
+
+features.forEach(feature => {
+  // Create a sub-container div for each histogram
+  const chartDiv = container
+    .append("div")
+    .attr("class", "chart")
+    .style("width", (width + margin.left + margin.right) + "px");
+
+  // Add a title
+  chartDiv.append("div")
+    .attr("class", "title")
+    .text(feature.label);
+
+  // Create an <svg> inside chartDiv
+  const svg = chartDiv.append("svg")
+    .attr("width",  width  + margin.left + margin.right)
+    .attr("height", height + margin.top  + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  // X scale (for the feature’s range)
+  const x = d3.scaleLinear()
+    .domain(d3.extent(data, d => d[feature.key]))
+    .nice()
+    .range([0, width]);
+
+  // Generate bins for this feature
+  const binsGenerator = d3.bin()
+    .domain(x.domain())
+    .thresholds(10); // number of bins
+  const bins = binsGenerator(data.map(d => d[feature.key]));
+
+  // Y scale (for count)
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(bins, b => b.length)])
+    .nice()
+    .range([height, 0]);
+
+  // Add total bars in gray
+  svg.selectAll(".bar-total")
+    .data(bins)
+    .join("rect")
+    .attr("class", "bar-total")
+    .attr("x", d => x(d.x0))
+    .attr("y", d => y(d.length))
+    .attr("width", d => x(d.x1) - x(d.x0) - 1)
+    .attr("height", d => height - y(d.length));
+
+  // Add an axis
+  svg.append("g")
+    .attr("class", "axis x-axis")
+    .attr("transform", `translate(0,${height})`)
+    .call(d3.axisBottom(x));
+
+  svg.append("g")
+    .attr("class", "axis y-axis")
+    .call(d3.axisLeft(y).ticks(5));
+
+  // Add a group for selected bars (overlaid in steelblue)
+  const selectedBarsG = svg.append("g").attr("class", "selected-bars");
+
+  // Create a brush for this histogram
+  const brush = d3.brushX()
+    .extent([[0, 0], [width, height]])
+    .on("brush end", brushed);
+
+  // Append brush to the svg
+  const brushG = svg.append("g")
+    .attr("class", "brush")
+    .call(brush);
+
+  // Store this histogram’s config so we can update it later
+  histConfigs.push({
+    featureKey: feature.key,
+    svg,
+    x,
+    y,
+    binsGenerator,
+    selectedBarsG,
+    brushG
+  });
+
+  // Handler for brush events
+  function brushed(event) {
+    const selection = event.selection;
+    if (!selection) {
+      // If brush is cleared, reset the filter to the full domain
+      filters[feature.key] = x.domain();
+    } else {
+      const [x0, x1] = selection;
+      filters[feature.key] = [ x.invert(x0), x.invert(x1) ];
+      // Optionally clamp them to the domain
+      const [minDomain, maxDomain] = x.domain();
+      filters[feature.key][0] = Math.max(filters[feature.key][0], minDomain);
+      filters[feature.key][1] = Math.min(filters[feature.key][1], maxDomain);
+    }
+    // After updating the filter for this feature, re-draw all histograms
+    updateAllHistograms();
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 5. UPDATE ALL HISTOGRAMS (CALLED AFTER ANY BRUSH CHANGE)
+// -----------------------------------------------------------------------------
+function updateAllHistograms() {
+  histConfigs.forEach(config => {
+    const { featureKey, svg, x, y, binsGenerator, selectedBarsG } = config;
+
+    // Recompute the histogram bins for the total data
+    const bins = binsGenerator(data.map(d => d[featureKey]));
+
+    // For each bin, figure out how many items pass *all* filters
+    const selectedCounts = bins.map(bin => {
+      const inBinData = data.filter(d => {
+        return d[featureKey] >= bin.x0 && d[featureKey] < bin.x1;
+      });
+      // Among those in this bin, how many pass *all* filters?
+      const countSelected = inBinData.filter(isSelected).length;
+      return countSelected;
+    });
+
+    // Re-bind data to the “selected-barsG” layer
+    const bars = selectedBarsG.selectAll(".bar-selected")
+      .data(bins);
+
+    bars.join(
+      enter => enter.append("rect")
+        .attr("class", "bar-selected")
+        .attr("x", d => x(d.x0))
+        .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+        .attr("y", (d, i) => y(selectedCounts[i]))
+        .attr("height", (d, i) => height - y(selectedCounts[i])),
+      update => update
+        .attr("x", d => x(d.x0))
+        .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+        .attr("y", (d, i) => y(selectedCounts[i]))
+        .attr("height", (d, i) => height - y(selectedCounts[i])),
+      exit => exit.remove()
+    );
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 6. INITIAL DRAW
+// -----------------------------------------------------------------------------
+updateAllHistograms();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Score, National Exam, 2024 (Mean=42)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .chart-container {
+            display: flex;
+            margin: 0;
+            padding: 0;
+        }
+        .chart {
+            margin: 0;
+        }
+        .axis-label {
+            font-size: 12px;
+        }
+        .brush-container {
+            margin: 20px auto;
+            text-align: center;
+        }
+        .brush-svg {
+            display: block;
+            margin: auto;
+        }
+        .selection {
+            fill: rgba(0, 123, 255, 0.4); /* Blue selection fill with transparency */
+            stroke: #007bff; /* Border of the selection */
+            stroke-width: 2px;
+        }
+        .handle {
+            fill: #007bff; /* Handle color */
+            stroke: #fff; /* Border of handles */
+            stroke-width: 1px;
+        }
+    </style>
+</head>
+<body>
+    <h3>Math Score, National Exam, 2024 (Mean=42)</h3>
+    <div class="chart-container">
+        <div id="chart1" class="chart"></div>
+        <div id="chart2" class="chart"></div>
+    </div>
+    <div class="brush-container">
+        <svg class="brush-svg" id="brush-svg" width="640" height="50"></svg>
+    </div>
+      <div class="analysis">
+        <p>Selected Population: <span id="selected-population">0%</span></p>
+        <p>Mean Score of Selected: <span id="selected-mean">N/A</span></p>
+        <p>Selected Minimum Value: <span id="selected-minimum">N/A</span></p>
+        <p>Selected Maximum Value: <span id="selected-maximum">N/A</span></p>
+    </div>
+
+    <script>
+        // Generate Gaussian data
+        const mean = 42;
+        const stdDev = 15;
+        const sampleSize = 180000;
+        const data = Array.from({ length: sampleSize }, () => {
+            let value;
+            do {
+                value = d3.randomNormal(mean, stdDev)();
+            } while (value < 0 || value > 100); // Ensure values are between 0 and 100
+            return value;
+        });
+
+        // Dimensions
+        const width1 = 400; // Width for the first chart (0-80)
+        const width2 = 480; // Width for the second chart (80-100)
+        const height = 300;
+        const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+
+        // First histogram (First 80%, 1% per bin)
+        const bins1 = d3.bin().thresholds(d3.range(0, 81, 1))(data.filter(d => d <= 80));
+        const xScale1 = d3.scaleLinear().domain([0, 80]).range([margin.left, width1 - margin.right]);
+        const yScale1 = d3.scaleLinear().domain([0, d3.max(bins1, d => d.length)]).range([height - margin.bottom, margin.top]);
+
+        const svg1 = d3.select("#chart1")
+            .append("svg")
+            .attr("width", width1)
+            .attr("height", height);
+
+        const bars1 = svg1.selectAll("rect")
+            .data(bins1)
+            .enter()
+            .append("rect")
+            .attr("x", d => xScale1(d.x0))
+            .attr("y", d => yScale1(d.length))
+            .attr("width", xScale1(bins1[0].x1) - xScale1(bins1[0].x0) - 1)
+            .attr("height", d => height - margin.bottom - yScale1(d.length))
+            .attr("fill", "steelblue");
+
+        svg1.append("g")
+            .attr("transform", `translate(0, ${height - margin.bottom})`)
+            .call(d3.axisBottom(xScale1).ticks(10))
+            .append("text")
+            .attr("x", width1 / 2)
+            .attr("y", margin.bottom - 5)
+            .attr("class", "axis-label")
+            .text("Score Ranges (1% per bin)");
+
+        svg1.append("g")
+            .attr("transform", `translate(${margin.left}, 0)`)
+            .call(d3.axisLeft(yScale1))
+            .append("text")
+            .attr("x", -margin.left + 5)
+            .attr("y", margin.top - 5)
+            .attr("class", "axis-label")
+            .text("Frequency");
+
+        // Second histogram (Last 20%, 0.2% per bin)
+        const bins2 = d3.bin().thresholds(d3.range(80, 100.2, 0.2))(data.filter(d => d > 80));
+        const xScale2 = d3.scaleLinear().domain([80, 100]).range([margin.left, width2 - margin.right]);
+        const yScale2 = d3.scaleLinear().domain([0, d3.max(bins2, d => d.length)]).range([height - margin.bottom, margin.top]);
+
+        const svg2 = d3.select("#chart2")
+            .append("svg")
+            .attr("width", width2)
+            .attr("transform", `translate(-80, 0)`)
+            .attr("height", height);
+
+        const bars2 = svg2.selectAll("rect")
+            .data(bins2)
+            .enter()
+            .append("rect")
+            .attr("x", d => xScale2(d.x0))
+            .attr("y", d => yScale2(d.length))
+            .attr("width", xScale2(bins2[0].x1) - xScale2(bins2[0].x0) - 1)
+            .attr("height", d => height - margin.bottom - yScale2(d.length))
+            .attr("fill", "orange");
+
+        svg2.append("g")
+            .attr("transform", `translate(0, ${height - margin.bottom})`)
+            .call(d3.axisBottom(xScale2).ticks(10))
+            .append("text")
+            .attr("x", width2 / 2)
+            .attr("y", margin.bottom - 5)
+            .attr("class", "axis-label")
+            .text("Score Ranges (0.2% per bin)");
+
+        svg2.append("g")
+            .attr("transform", `translate(${width2 - margin.right}, 0)`) // Move the y-axis to the right edge
+            .call(d3.axisRight(yScale2)) // Use axisRight for ticks to face inward
+            .append("text")
+            .attr("x", margin.right - 5) // Adjust x position for the label
+            .attr("y", margin.top - 5)
+            .attr("class", "axis-label")
+            .attr("text-anchor", "end") // Align text to the end
+            .text("Frequency");
+
+        // Brush functionality
+        const brushWidth = 560; // Brush width
+        const brushHeight = 50;
+
+        const proportionalScale = d3.scaleLinear()
+            .domain([0, 80, 100]) // Define domain segments
+            .range([10, 240, 550]); // 40% for 0-80, 60% for 80-100
+
+        const brushSvg = d3.select("#brush-svg")
+        .attr("transform", `translate(-580, -20)`);
+
+        const brush = d3.brushX()
+            .extent([[10, 0], [brushWidth-10, brushHeight]])
+            .on("brush end", (event) => {
+                const selection = event.selection;
+                if (selection) {
+                    const [start, end] = selection.map(proportionalScale.invert);
+                    highlightBins(start, end);
+                    analyzeSelection(start, end);
+                }
+            });
+
+        brushSvg.append("g")
+            .attr("transform", `translate(0, ${brushHeight - 20})`)
+            .call(d3.axisBottom(proportionalScale).ticks(10));
+
+
+        brushSvg.append("g")
+            .attr("class", "brush")
+            .call(brush);
+
+        
+
+        
+        /*(brushSvg.append("g")
+            .attr("transform", `translate(0, ${brushHeight - 20})`)
+            .call(d3.axisBottom(proportionalScale)
+                .ticks(21) // Increase tick count for better granularity
+                .tickSizeOuter(10) // Ensures end ticks are visible
+                .tickSize(5) // Adjust tick size
+                .tickPadding(5) // Padding between tick labels and axis line
+            )
+            .selectAll(".tick text")
+            .style("font-size", "10px"); // Optional: Adjust font size for labels*/
+
+        // Highlight bins in the selected range
+        function highlightBins(start, end) {
+            bars1.attr("fill", d => d.x0 >= start && d.x1 <= end ? "red" : "steelblue")
+                .attr("stroke", d => d.x0 >= start && d.x1 <= end ? "black" : "none");
+            bars2.attr("fill", d => d.x0 >= start && d.x1 <= end ? "red" : "orange")
+                .attr("stroke", d => d.x0 >= start && d.x1 <= end ? "black" : "none");
+        }
+
+        // Analyze the selected population
+        function analyzeSelection(start, end) {
+            const selected = data.filter(d => d >= start && d <= end);
+            const populationPercentage = ((selected.length / sampleSize) * 100).toFixed(2);
+            const meanScore = (selected.reduce((sum, val) => sum + val, 0) / selected.length).toFixed(2);
+            const minScore = Math.min(...selected).toFixed(2);
+            const maxScore = Math.max(...selected).toFixed(2);
+
+            d3.select("#selected-population").text(`${populationPercentage}%`);
+            d3.select("#selected-mean").text(meanScore);
+            d3.select("#selected-minimum").text(minScore);
+            d3.select("#selected-maximum").text(maxScore);
+        }
+    </script>
+</body>
+</html>

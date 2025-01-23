@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poisson Distribution Comparison</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .chart {
+            display: inline-block;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h4>Comparison of Two Left-Skewed Poisson Distributions</h4>
+    <div id="chart"></div>
+    <script>
+        // Set up dimensions and margins (scaled down to 30%)
+        const width = 120, height = 90, margin = {top: 9, right: 15, bottom: 12, left: 15};
+        const svgWidth = 2 * width + margin.left + margin.right + 30; // Extra space for Concorde shape
+
+        // Append SVG container
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", svgWidth)
+            .attr("height", height + margin.top + margin.bottom);
+
+        // Poisson distributions
+        const poisson1 = d3.range(0, 20).map(x => ({x, y: d3.randomPoisson(1)()}));
+        const poisson2 = d3.range(0, 20).map(x => ({x, y: d3.randomPoisson(2)()}));
+
+        // Scales
+        const xScale = d3.scaleLinear().domain([0, 20]).range([margin.left, width - margin.right]);
+        const yScale = d3.scaleLinear().domain([0, d3.max([...poisson1, ...poisson2], d => d.y)]).range([height - margin.bottom, margin.top]);
+
+        // Line generator
+        const line = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y))
+            .curve(d3.curveMonotoneX);
+
+        // Draw first chart
+        svg.append("g")
+            .attr("class", "chart")
+            .selectAll(".line")
+            .data([poisson1])
+            .enter()
+            .append("path")
+            .attr("d", line)
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 1);
+
+        // Add axes to first chart
+        svg.append("g")
+            .attr("transform", `translate(0,${height - margin.bottom})`)
+            .call(d3.axisBottom(xScale).ticks(5));
+        svg.append("g")
+            .attr("transform", `translate(${margin.left},0)`)
+            .call(d3.axisLeft(yScale).ticks(3));
+
+        // Draw second chart
+        svg.append("g")
+            .attr("class", "chart")
+            .selectAll(".line")
+            .data([poisson2])
+            .enter()
+            .append("path")
+            .attr("d", line)
+            .attr("fill", "none")
+            .attr("stroke", "orange")
+            .attr("stroke-width", 1)
+            .attr("transform", `translate(${width + 30}, 0)`);
+
+        // Add x-axis to second chart
+        svg.append("g")
+            .attr("transform", `translate(${width + 30},${height - margin.bottom})`)
+            .call(d3.axisBottom(xScale).ticks(5));
+
+        // Add y-axis to the right of the second chart
+        svg.append("g")
+            .attr("transform", `translate(${width + margin.left + width + 30},0)`)
+            .call(d3.axisRight(yScale).ticks(3));
+
+        // Add "Concorde-like" shape between the charts
+        const rectX = width + 15; // Position for the rectangle
+        const rectWidth = 15, rectHeight = 80;
+        const rectY = (height + margin.top + margin.bottom - rectHeight) / 2;
+
+        // Draw the rectangle
+        svg.append("rect")
+            .attr("transform", `translate(-30,-20)`)
+            .attr("x", rectX)
+            .attr("y", rectY)
+            .attr("width", rectWidth)
+            .attr("height", rectHeight)
+            .attr("fill", "lightgray");
+
+        // Draw the top triangle
+        svg.append("polygon")
+            .attr("points", `
+                ${rectX},${rectY} 
+                ${rectX + rectWidth},${rectY} 
+                ${rectX + rectWidth / 2},${rectY - 9}
+            `)
+            .attr("fill", "lightgray");
+
+        // Draw the bottom triangle
+        svg.append("polygon")
+            .attr("points", `
+                ${rectX},${rectY + rectHeight} 
+                ${rectX + rectWidth},${rectY + rectHeight} 
+                ${rectX + rectWidth / 2},${rectY + rectHeight + 9}
+            `)
+            .attr("fill", "lightgray");
+
+    </script>
+</body>
+</html>

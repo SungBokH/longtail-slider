@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Applying Crossfilter.js to Cars Dataset</title>
+  <!-- D3.js and Crossfilter -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter2/1.5.4/crossfilter.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+
+    .chart-wrapper {
+      margin-bottom: 40px; /* extra space between charts */
+    }
+
+    .title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    /* Axis styling */
+    .axis path,
+    .axis line {
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+
+    /* --- BARS --- */
+    .bar-background {
+      fill: #ccc;
+    }
+    .bar-foreground {
+      fill: steelblue;
+    }
+
+    /* --- BRUSH (the slider) STYLING --- */
+    .brush .selection {
+      fill: #ff9900;       /* bright orange for visibility */
+      fill-opacity: 0.3;   
+      stroke: #ff6600;     /* darker orange border */
+      stroke-width: 3;     /* a bit thicker for clarity */
+    }
+
+    .brush .handle {
+      fill: #ff6600;
+      stroke: #000;
+      stroke-width: 1;
+      cursor: ew-resize;
+    }
+
+    .brush .overlay {
+      fill: #f2ad23;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="chart-wrapper">
+    <div class="title">MPG Histogram</div>
+    <svg id="mpg-chart" width="500" height="250"></svg>
+  </div>
+
+  <div class="chart-wrapper">
+    <div class="title">HP Histogram</div>
+    <svg id="hp-chart" width="500" height="250"></svg>
+  </div>
+
+  <script>
+    // 1) A small portion of car dataset
+    const cars = [
+      { model: "Toyota Camry",      mpg: 28, hp: 203 },
+      { model: "Honda Accord",      mpg: 30, hp: 192 },
+      { model: "Ford Fusion",       mpg: 25, hp: 181 },
+      { model: "Chevrolet Malibu",  mpg: 29, hp: 160 },
+      { model: "Nissan Altima",     mpg: 31, hp: 188 },
+      { model: "Hyundai Sonata",    mpg: 27, hp: 191 },
+      { model: "Kia Optima",        mpg: 27, hp: 185 },
+      { model: "Mazda 6",           mpg: 26, hp: 187 },
+      { model: "Subaru Legacy",     mpg: 27, hp: 182 },
+      { model: "VW Passat",         mpg: 28, hp: 174 }
+    ];
+
+    // Crossfilter setup
+    const cf = crossfilter(cars);
+    const mpgDim = cf.dimension(d => d.mpg);
+    const hpDim  = cf.dimension(d => d.hp);
+    // A dimension to access all data (for computing filtered subset)
+    const allDim = cf.dimension(d => d);
+
+    // Dimensions and Scales
+    const histWidth   = 500,
+          histHeight  = 200,
+          brushSpace  = 30,  
+          margin      = { top: 10, right: 10, bottom: 10, left: 10 };
+
+    function extent(field) {
+      const vals = cars.map(d => d[field]);
+      return [d3.min(vals), d3.max(vals)];
+    }
+    const [mpgMin, mpgMax] = extent("mpg");
+    const [hpMin,  hpMax]  = extent("hp");
+
+    // X scales
+    const xScaleMpg = d3.scaleLinear()
+      .domain([mpgMin, mpgMax])
+      .range([margin.left, histWidth - margin.right]);
+
+    const xScaleHp = d3.scaleLinear()
+      .domain([hpMin, hpMax])
+      .range([margin.left, histWidth - margin.right]);
+
+    // Binning
+    const numBins = 8; 
+    function binData(data, accessor, xScale, domainMin, domainMax) {
+      return d3.histogram()
+        .value(accessor)
+        .domain([domainMin, domainMax])
+        .thresholds(xScale.ticks(numBins))(data);
+    }
+
+    // Precompute background bins (unfiltered)
+    const mpgBinsAll = binData(cars, d => d.mpg, xScaleMpg, mpgMin, mpgMax);
+    const hpBinsAll  = binData(cars, d => d.hp,  xScaleHp,  hpMin,  hpMax);
+
+    // Y scales based on max bin count
+    const yScaleMpg = d3.scaleLinear()
+      .domain([0, d3.max(mpgBinsAll, d => d.length)])
+      .range([histHeight - margin.bottom, margin.top]);
+
+    const yScaleHp = d3.scaleLinear()
+      .domain([0, d3.max(hpBinsAll, d => d.length)])
+      .range([histHeight - margin.bottom, margin.top]);
+
+    // Select the SVG elements
+    const mpgChart = d3.select("#mpg-chart");
+    const hpChart  = d3.select("#hp-chart");
+
+    // Rendering Histograms
+    function renderHistogram({ chartSvg, binsAll, xScale, yScale, attribute }) {
+      // BACKGROUND bars (entire dataset)
+      const backgroundBars = chartSvg.selectAll(".bar-background") // I couldn't find a better way to visualize all visualizations. 
+        .data(binsAll, d => d.x0);
+
+      backgroundBars.enter()
+        .append("rect")
+        .attr("class", "bar-background")
+        .merge(backgroundBars)
+        .attr("x", d => xScale(d.x0))
+        .attr("y", d => yScale(d.length))
+        .attr("width", d => xScale(d.x1) - xScale(d.x0) - 1)
+        .attr("height", d => yScale(0) - yScale(d.length));
+
+      backgroundBars.exit().remove();
+
+      // Filtering the data. 
+      const filteredData = allDim.top(Infinity);
+      const binsFiltered = binData(
+        filteredData,
+        d => d[attribute],
+        xScale,
+        xScale.domain()[0],
+        xScale.domain()[1]
+      );
+
+      // Build a quick lookup from x0 => count
+      const filteredMap = {};
+      binsFiltered.forEach(b => { filteredMap[b.x0] = b.length; });
+
+      const foregroundBars = chartSvg.selectAll(".bar-foreground")
+        .data(binsAll, d => d.x0);
+
+      foregroundBars.enter()
+        .append("rect")
+        .attr("class", "bar-foreground")
+        .merge(foregroundBars)
+        .attr("x", d => xScale(d.x0))
+        .attr("y", d => {
+          const cnt = filteredMap[d.x0] || 0;
+          return yScale(cnt);
+        })
+        .attr("width", d => xScale(d.x1) - xScale(d.x0) - 1)
+        .attr("height", d => {
+          const cnt = filteredMap[d.x0] || 0;
+          return yScale(0) - yScale(cnt);
+        });
+
+      foregroundBars.exit().remove();
+
+      // X Axis
+      chartSvg.selectAll(".x-axis").remove();
+      chartSvg.append("g")
+        .attr("class", "axis x-axis")
+        .attr("transform", `translate(0,${histHeight - margin.bottom})`)
+        .call(d3.axisBottom(xScale));
+
+      // Y Axis
+      chartSvg.selectAll(".y-axis").remove();
+      chartSvg.append("g")
+        .attr("class", "axis y-axis")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(yScale).ticks(5));
+    }
+
+    // Create the brush (the slider) for each dimension
+    //    BUT place it in the same SVG, below the x-axis.
+    function createBrush({ chartSvg, xScale, dimension }) {
+
+      const brush = d3.brushX()
+        .extent([[margin.left, 10], [histWidth - margin.right, brushSpace]])
+        .on("brush end", brushed);
+
+      chartSvg.append("g")
+        .attr("class", "brush")
+        .attr("transform", `translate(0,${histHeight - margin.bottom + 20})`)
+        .call(brush);
+
+      function brushed(event) {
+        if (!event.selection) {
+          // If no selection, clear the filter
+          dimension.filterAll();
+        } else {
+          const [x0, x1] = event.selection.map(xScale.invert);
+          dimension.filterRange([x0, x1]);
+        }
+        // Re-render both histograms so they update together
+        renderAll();
+      }
+    }
+
+    // Initialize brushes for MPG and HP in the same SVG as their histograms
+    createBrush({
+      chartSvg: mpgChart,
+      xScale: xScaleMpg,
+      dimension: mpgDim
+    });
+    createBrush({
+      chartSvg: hpChart,
+      xScale: xScaleHp,
+      dimension: hpDim
+    });
+
+    // Combined render function
+    function renderAll() {
+      renderHistogram({
+        chartSvg: mpgChart,
+        binsAll: mpgBinsAll,
+        xScale: xScaleMpg,
+        yScale: yScaleMpg,
+        attribute: "mpg"
+      });
+
+      renderHistogram({
+        chartSvg: hpChart,
+        binsAll: hpBinsAll,
+        xScale: xScaleHp,
+        yScale: yScaleHp,
+        attribute: "hp"
+      });
+    }
+
+    // 8) Initial render
+    renderAll();
+  </script>
+</body>
+</html>
