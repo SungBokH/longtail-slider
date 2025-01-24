@@ -101,11 +101,11 @@ export default function BarChartMagnitude({
       binRange(domains[i], domains[i + 1], binSize[i])
     }
 
-    data = data.toSorted((a, b) => a - b);
-    for (let salary of data) {
+    data = data.toSorted((a, b) => a > b ? 1 : (a < b ? -1 : 0));
+    for (let val of data) {
       for (let b of allBins) {
-        if (salary >= b.x0 && salary < b.x1) {
-          b.values.push(salary);
+        if (val >= b.x0 && val < b.x1) {
+          b.values.push(val);
           break;
         }
       }

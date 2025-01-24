@@ -43,25 +43,59 @@
     const randomSalary = getData()
     console.log(randomSalary)
 
-    const barChartMagnitude = BarChartMagnitude({
-      data: randomSalary,
-      domains: [300_000, 5_000_000, 10_000_000], // divide x axis on 100K and 1M
-      xBins: [.25, .55, .75], // in percent on the x axis, the position of domain separators
-      binSize: [10_000, 200_000, 500_000, 5_000_000] // size of bin for each division
-      // y: (binData, i) => {
-      //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
-      //   return d3.scaleLinear().domain([0, max])
-      // },
-    })
+    async function initChart() {
+      // 215k cities with sizes ranging from 0 to 2.5 millions (Shanghai)
+      /* https://download.geonames.org/export/dump/readme.txt
+        The main 'geoname' table has the following fields :
+        ---------------------------------------------------
+        geonameid         :00 integer id of record in geonames database
+        name              :01 name of geographical point (utf8) varchar(200)
+        asciiname         :02 name of geographical point in plain ascii characters, varchar(200)
+        alternatenames    :03 alternatenames, comma separated, ascii names automatically transliterated, convenience attribute from alternatename table, varchar(10000)
+        latitude          :04 latitude in decimal degrees (wgs84)
+        longitude         :05 longitude in decimal degrees (wgs84)
+        feature class     :06 see http://www.geonames.org/export/codes.html, char(1)
+        feature code      :07 see http://www.geonames.org/export/codes.html, varchar(10)
+        country code      :08 ISO-3166 2-letter country code, 2 characters
+        cc2               :09 alternate country codes, comma separated, ISO-3166 2-letter country code, 200 characters
+        admin1 code       :10 fipscode (subject to change to iso code), see exceptions below, see file admin1Codes.txt for display names of this code; varchar(20)
+        admin2 code       :11 code for the second administrative division, a county in the US, see file admin2Codes.txt; varchar(80) 
+        admin3 code       :12 code for third level administrative division, varchar(20)
+        admin4 code       :13 code for fourth level administrative division, varchar(20)
+        population        :14 bigint (8 byte int) 
+        elevation         :15 in meters, integer
+        dem               :16 digital elevation model, srtm3 or gtopo30, average elevation of 3''x3'' (ca 90mx90m) or 30''x30'' (ca 900mx900m) area in meters, integer. srtm processed by cgiar/ciat.
+        timezone          :17 the iana timezone id (see file timeZone.txt) varchar(40)
+        modification date :18 date of last modification in yyyy-MM-dd format
+      */
+      const cities = await d3.dsv('\t', '../cities500.txt', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
 
-    barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [10_000, 250_000, 1_000_000], // divide x axis on 100K and 1M
+        xBins: [.25, .55, .75], // in percent on the x axis, the position of domain separators
+        binSize: [1_000, 25_000, 100_000, 2_500_000] // size of bin for each division
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
 
-    // setInterval(() => {
-    //   randomSalary.pop()
-    //   barChartMagnitude.updateData()
-    // }, 400) 
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
 
-    document.querySelector('#chart2').append(barChartMagnitude)
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      document.querySelector('#chart2').append(barChartMagnitude)
+    }
+    initChart()
   </script>
 </body>
 
