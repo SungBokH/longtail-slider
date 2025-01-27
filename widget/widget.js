@@ -5,20 +5,26 @@ export default function BarChartMagnitude({
   domains = [],
   xBins = [],
   binSize = [],
+  domainAuto = {
+    min: true,
+    max: true
+  },
+
   width = 400,
   height = 200,
   marginTop = 20,
   marginRight = 20,
   marginBottom = 30,
-  marginLeft = 40
+  marginLeft = 40,
+
+  brushOffset = 20, // small vertical offset below x-axis
+  brushHeight = 8
 }) {
   // shallow copy arrays as internal values
   domains = domains.slice()
   xBins = xBins.slice()
   binSize = binSize.slice()
 
-  const brushOffset = 20; // small vertical offset below x-axis
-  const brushHeight = 8;
   const totalHeight = height + brushHeight + brushOffset + marginTop + marginBottom;
 
   const scaleFactor = 0.666;
@@ -27,10 +33,10 @@ export default function BarChartMagnitude({
   const yForPrismTop = apexOffsetTop;
 
   // add min/max domains
-  const min = 0//d3.min(data)
+  const min = d3.min(data)
   const max = d3.max(data)
-  if (!domains.includes(min)) { domains.unshift(min) }
-  if (!domains.includes(max)) { domains.push(max) }
+  if (domainAuto.min && !domains.includes(min)) { domains.unshift(min) }
+  if (domainAuto.max && !domains.includes(max)) { domains.push(max) }
   // console.log(domains)
 
   let brushDomainLeft = domains[0]
@@ -46,6 +52,81 @@ export default function BarChartMagnitude({
     .attr("width", width + marginLeft + marginRight)
     .attr("height", totalHeight);
   const node = svg.node()
+
+  // TEMP STYLE SOLUTION => TODO/REDO/RETHINK
+  const style = document.createElement('style')
+  style.innerHTML = `
+    .prism {
+        fill: #B0C4DE;
+        stroke: #B0C4DE;
+        opacity: 0.7;
+        transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .prism:hover {
+        cursor: pointer;
+        stroke: #000;
+        stroke-width: 2;
+    }
+
+    .x-axis-line {
+        stroke: black;
+        stroke-width: 1;
+    }
+
+    .tick-line {
+        stroke: #333;
+        stroke-width: 1;
+    }
+
+    .tick-label {
+        fill: #333;
+        font-size: 14px;
+    }
+
+    .bar {
+        fill: steelblue;
+    }
+    .bar.highlighted {
+        fill: darkorange;
+    }
+    .bar:hover {
+        opacity:1;
+        stroke:#000;
+    }
+
+    .background .bar {
+      fill: gray;
+      opacity: .3;
+    }
+    .foreground .bar {
+      fill: steelblue;
+    }
+
+    .ref-text {
+        fill: #333;
+        font-size: 12px;
+    }
+
+    :root {
+        --highlight-color: orange;
+        --normal-color: steelblue;
+    }
+
+    .brush {
+        .selection {
+            fill: var(--highlight-color); /* highlight color */
+            fill-opacity: 1;
+        }
+        .handle {
+            fill: #999;
+            cursor: ew-resize;
+        }
+        .overlay {
+            fill:rgb(223, 223, 223);
+        }
+    }
+  `
+  document.head.appendChild(style)
 
   const g = svg.append("g")
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
@@ -125,7 +206,9 @@ export default function BarChartMagnitude({
     yScales.push(d3.scaleLinear().domain([0, maxBin]).range([height, yForPrismTop]))
   }
 
-  let barGroup = g.append("g");
+  let barGroup = g.append("g").classed('barGroup', true);
+  // let backgroundBarGroup = g.append("g").classed('background', true);
+  let foregroundBarGroup = g.append("g").classed('foreground', true);
 
   function getYScaleForBin(b) {
     return yScales[getDomainIndex(b.x0)]
@@ -165,7 +248,7 @@ export default function BarChartMagnitude({
       // only when sourceEvent is defined, like mousemove (user input)
       // will not fire when prism are moved on `gBrush.call(brush.move, [left, right])`
       if (event.sourceEvent) {
-        filterTrigger({ x0:0, x1:max, noFilter:true })
+        filterTrigger({})
       }
       return;
     }
@@ -182,7 +265,7 @@ export default function BarChartMagnitude({
     }
 
     if (event.sourceEvent) {
-      filterTrigger({ x0:domainLeft, x1:domainRight })
+      filterTrigger({ selection: [domainLeft, domainRight] })
     }
   }
 
@@ -204,6 +287,8 @@ export default function BarChartMagnitude({
 
   function updateCharts() {
     barGroup.selectAll(".bar").remove();
+
+    // TODO background/foreground bars for crossfilter
 
     barGroup.selectAll(".bar")
       .data(bins)
@@ -252,7 +337,7 @@ export default function BarChartMagnitude({
             .attr("x", xPos - 10)
             .attr("y", yPos)
             .attr("text-anchor", "end")
-            .text(d);
+            .text(nFormatter(d, 1));
         });
 
       axisGroup.append("line")
@@ -271,7 +356,7 @@ export default function BarChartMagnitude({
       }
     }
 
-    setBrushSelection();
+    // setBrushSelection();
   }
 
   function createPrism(x, y, dragBehavior) {
@@ -317,6 +402,31 @@ export default function BarChartMagnitude({
   }
 
   updateCharts();
+
+  node.crossfilter = (filteredData) => {
+    if (!filteredData) { // no filter
+      console.log('no filter')
+      barGroup.classed('background', false)
+      foregroundBarGroup.selectAll(".bar").remove()
+      return
+    }
+
+    const filteredBins = makeBins(filteredData);
+    barGroup.classed('background', true)
+    foregroundBarGroup.selectAll(".bar")
+      .data(filteredBins, d => d.x0)
+      .join(
+        enter => enter
+          .append("rect")
+          .attr("class", "bar"),
+        update => update
+          .attr("x", d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
+          .attr("y", d => getYScaleForBin(d)(d.values.length))
+          .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
+          .attr("height", d => height - getYScaleForBin(d)(d.values.length)),
+          exit => exit.remove()
+      )
+  }
 
   return node
 }

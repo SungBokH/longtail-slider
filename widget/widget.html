@@ -77,9 +77,10 @@
 
       const barChartMagnitude = BarChartMagnitude({
         data: population,//randomSalary,
-        domains: [10_000, 250_000, 1_000_000], // divide x axis on 100K and 1M
+        domains: [0, 5_000, 250_000, 1_000_000], // divide x axis on 100K and 1M
         xBins: [.25, .55, .75], // in percent on the x axis, the position of domain separators
-        binSize: [1_000, 25_000, 100_000, 2_500_000] // size of bin for each division
+        binSize: [500, 25_000, 100_000, 2_500_000], // size of bin for each division
+        domainAuto: { min: false }
         // y: (binData, i) => {
         //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
         //   return d3.scaleLinear().domain([0, max])

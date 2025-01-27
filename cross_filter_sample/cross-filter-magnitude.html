@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Applying Crossfilter.js to Cars Dataset</title>
+  <!-- D3.js and Crossfilter -->
+  <script type="importmap">
+      {
+        "imports": {
+          "d3": "https://cdn.jsdelivr.net/npm/d3@7/+esm",
+          "crossfilter": "https://cdn.jsdelivr.net/npm/crossfilter2@1.5.4/+esm"
+        }
+      }
+    </script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .chart-wrapper {
+      margin-bottom: 40px;
+      /* extra space between charts */
+    }
+
+    .title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    /* Axis styling */
+    .axis path,
+    .axis line {
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+
+    /* --- BARS --- */
+    .bar-background {
+      fill: #ccc;
+    }
+
+    .bar-foreground {
+      fill: steelblue;
+    }
+
+    /* --- BRUSH (the slider) STYLING --- */
+    .brush .selection {
+      fill: #ff9900;
+      /* bright orange for visibility */
+      fill-opacity: 0.3;
+      stroke: #ff6600;
+      /* darker orange border */
+      stroke-width: 3;
+      /* a bit thicker for clarity */
+    }
+
+    .brush .handle {
+      fill: #ff6600;
+      stroke: #000;
+      stroke-width: 1;
+      cursor: ew-resize;
+    }
+
+    .brush .overlay {
+      fill: #f2ad23;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="chart-wrapper">
+    <div class="title">MPG Histogram</div>
+    <svg id="mpg-chart" width="500" height="250"></svg>
+  </div>
+
+  <div class="chart-wrapper">
+    <div class="title">HP Histogram</div>
+    <svg id="hp-chart" width="500" height="250"></svg>
+  </div>
+
+  <div class="chart-wrapper">
+    <div class="title">Weight Histogram</div>
+    <svg id="weight-chart" width="500" height="250"></svg>
+  </div>
+
+  <div class="chart-wrapper">
+    <div class="title">Acceleration Histogram</div>
+    <svg id="acc-chart" width="500" height="250"></svg>
+  </div>
+
+  <div id="barChartMagnitude" class="chart-wrapper">
+    <div class="title">Acceleration Histogram Magnitude</div>
+    <!-- <svg id="acc-chart" width="500" height="250"></svg> -->
+  </div>
+
+
+  <script type="module">
+    import * as d3 from "d3";
+    import crossfilter from "crossfilter";
+    import BarChartMagnitude from '../widget/widget.js'
+
+    d3.json("./cars.json").then(function(data) {
+
+      // Convert the YEAR column from string to number
+      //data.forEach(d => {
+      //  d.YEAR = +d.YEAR; // The "+" operator will convert string to integer
+      //});
+
+      // Create a crossfilter instance
+      const cf = crossfilter(data);
+      const mpgDim = cf.dimension(d => d.Miles_per_Gallon);
+      const hpDim = cf.dimension(d => d.Horsepower);
+      const weightDim = cf.dimension(d => d.Weight_in_lbs);
+      const accDim = cf.dimension(d => d.Acceleration);
+
+      // A dimension to access all data (for computing filtered subset)
+      const allDim = cf.dimension(d => d);
+
+
+      // Dimensions and Scales
+      const histWidth = 500,
+        histHeight = 200,
+        brushSpace = 30,
+        margin = { top: 10, right: 10, bottom: 10, left: 30 };
+
+      function extent(field) {
+        const vals = data.map(d => d[field]);
+        return [d3.min(vals), d3.max(vals)];
+      }
+
+      const [mpgMin, mpgMax] = extent("Miles_per_Gallon");
+      const [hpMin, hpMax] = extent("Horsepower");
+      const [weightMin, weightMax] = extent("Weight_in_lbs");
+      const [accMin, accMax] = extent("Acceleration");
+
+
+      // X scales
+      const xScaleMpg = d3.scaleLinear()
+        .domain([mpgMin, mpgMax])
+        .range([margin.left, histWidth - margin.right]);
+
+      const xScaleHp = d3.scaleLinear()
+        .domain([hpMin, hpMax])
+        .range([margin.left, histWidth - margin.right]);
+
+      const xScaleWeight = d3.scaleLinear()
+        .domain([weightMin, weightMax])
+        .range([margin.left, histWidth - margin.right]);
+
+      const xScaleAcc = d3.scaleLinear()
+        .domain([accMin, accMax])
+        .range([margin.left, histWidth - margin.right]);
+
+
+      // Binning
+      const numBins = 8;
+      function binData(data, accessor, xScale, domainMin, domainMax) {
+        return d3.histogram()
+          .value(accessor)
+          .domain([domainMin, domainMax])
+          .thresholds(xScale.ticks(numBins))(data);
+      }
+
+      // Precompute background bins (unfiltered)
+      const mpgBinsAll = binData(data, d => d.Miles_per_Gallon, xScaleMpg, mpgMin, mpgMax);
+      const hpBinsAll = binData(data, d => d.Horsepower, xScaleHp, hpMin, hpMax);
+      const weightBinsAll = binData(data, d => d.Weight_in_lbs, xScaleWeight, weightMin, weightMax);
+      const accBinsAll = binData(data, d => d.Acceleration, xScaleAcc, accMin, accMax);
+
+
+      // Y scales based on max bin count
+      const yScaleMpg = d3.scaleLinear()
+        .domain([0, d3.max(mpgBinsAll, d => d.length)])
+        .range([histHeight - margin.bottom, margin.top]);
+
+      const yScaleHp = d3.scaleLinear()
+        .domain([0, d3.max(hpBinsAll, d => d.length)])
+        .range([histHeight - margin.bottom, margin.top]);
+
+      const yScaleWeight = d3.scaleLinear()
+        .domain([0, d3.max(weightBinsAll, d => d.length)])
+        .range([histHeight - margin.bottom, margin.top]);
+
+      const yScaleAcc = d3.scaleLinear()
+        .domain([0, d3.max(accBinsAll, d => d.length)])
+        .range([histHeight - margin.bottom, margin.top]);
+
+
+      // Select the SVG elements
+      const mpgChart = d3.select("#mpg-chart");
+      const hpChart = d3.select("#hp-chart");
+      const weightChart = d3.select("#weight-chart");
+      const accChart = d3.select("#acc-chart");
+
+      function renderHistogram({ chartSvg, binsAll, xScale, yScale, attribute }) {
+        // BACKGROUND bars (entire dataset)
+        const backgroundBars = chartSvg.selectAll(".bar-background") // I couldn't find a better way to visualize all visualizations. 
+          .data(binsAll, d => d.x0);
+
+        backgroundBars.enter()
+          .append("rect")
+          .attr("class", "bar-background")
+          .merge(backgroundBars)
+          .attr("x", d => xScale(d.x0))
+          .attr("y", d => yScale(d.length))
+          .attr("width", d => xScale(d.x1) - xScale(d.x0) - 1)
+          .attr("height", d => yScale(0) - yScale(d.length));
+
+        backgroundBars.exit().remove();
+
+        // Filtering the data. 
+        const filteredData = allDim.top(Infinity);
+        const binsFiltered = binData(
+          filteredData,
+          d => d[attribute],
+          xScale,
+          xScale.domain()[0],
+          xScale.domain()[1]
+        );
+
+        // Build a quick lookup from x0 => count
+        const filteredMap = {};
+        binsFiltered.forEach(b => { filteredMap[b.x0] = b.length; });
+
+        const foregroundBars = chartSvg.selectAll(".bar-foreground")
+          .data(binsAll, d => d.x0);
+
+        foregroundBars.enter()
+          .append("rect")
+          .attr("class", "bar-foreground")
+          .merge(foregroundBars)
+          .attr("x", d => xScale(d.x0))
+          .attr("y", d => {
+            const cnt = filteredMap[d.x0] || 0;
+            return yScale(cnt);
+          })
+          .attr("width", d => xScale(d.x1) - xScale(d.x0) - 1)
+          .attr("height", d => {
+            const cnt = filteredMap[d.x0] || 0;
+            return yScale(0) - yScale(cnt);
+          });
+
+        foregroundBars.exit().remove();
+
+        // X Axis
+        chartSvg.selectAll(".x-axis").remove();
+        chartSvg.append("g")
+          .attr("class", "axis x-axis")
+          .attr("transform", `translate(0,${histHeight - margin.bottom})`)
+          .call(d3.axisBottom(xScale));
+
+        // Y Axis
+        chartSvg.selectAll(".y-axis").remove();
+        chartSvg.append("g")
+          .attr("class", "axis y-axis")
+          .attr("transform", `translate(${margin.left},0)`)
+          .call(d3.axisLeft(yScale).ticks(5));
+      }
+
+      // Create the brush (the slider) for each dimension
+      //    BUT place it in the same SVG, below the x-axis.
+      function createBrush({ chartSvg, xScale, dimension }) {
+
+        const brush = d3.brushX()
+          .extent([[margin.left, 10], [histWidth - margin.right, brushSpace]])
+          .on("brush end", brushed);
+
+        chartSvg.append("g")
+          .attr("class", "brush")
+          .attr("transform", `translate(0,${histHeight - margin.bottom + 20})`)
+          .call(brush);
+
+        function brushed(event) {
+          if (!event.selection) {
+            // If no selection, clear the filter
+            dimension.filterAll();
+          } else {
+            const [x0, x1] = event.selection.map(xScale.invert);
+            dimension.filterRange([x0, x1]);
+          }
+          // Re-render both histograms so they update together
+          renderAll();
+        }
+      }
+
+      // Initialize brushes for MPG and HP in the same SVG as their histograms
+      createBrush({
+        chartSvg: mpgChart,
+        xScale: xScaleMpg,
+        dimension: mpgDim
+      });
+
+      createBrush({
+        chartSvg: hpChart,
+        xScale: xScaleHp,
+        dimension: hpDim
+      });
+
+      createBrush({
+        chartSvg: weightChart,
+        xScale: xScaleWeight,
+        dimension: weightDim
+      });
+
+      createBrush({
+        chartSvg: accChart,
+        xScale: xScaleAcc,
+        dimension: accDim
+      });
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: data.map(d => d.Acceleration),
+        domains: [13, 18],
+        xBins: [.25, .55],
+        binSize: [.5, 1, .5],
+        brushHeight: 20
+      })
+      document.querySelector('#barChartMagnitude').append(barChartMagnitude)
+
+      // Combined render function
+      function renderAll() {
+        renderHistogram({
+          chartSvg: mpgChart,
+          binsAll: mpgBinsAll,
+          xScale: xScaleMpg,
+          yScale: yScaleMpg,
+          attribute: "Miles_per_Gallon"
+        });
+
+        renderHistogram({
+          chartSvg: hpChart,
+          binsAll: hpBinsAll,
+          xScale: xScaleHp,
+          yScale: yScaleHp,
+          attribute: "Horsepower"
+        });
+
+        renderHistogram({
+          chartSvg: weightChart,
+          binsAll: weightBinsAll,
+          xScale: xScaleWeight,
+          yScale: yScaleWeight,
+          attribute: "Weight_in_lbs"
+        });
+
+        renderHistogram({
+          chartSvg: accChart,
+          binsAll: accBinsAll,
+          xScale: xScaleAcc,
+          yScale: yScaleAcc,
+          attribute: "Acceleration"
+        });
+
+        const isFiltered = [mpgDim, hpDim, weightDim, accDim].some(dim => dim.hasCurrentFilter())
+        barChartMagnitude.crossfilter(
+          !isFiltered ? null : allDim.top(Infinity).map(d => d.Acceleration)
+        )
+      }
+
+      // Initial render
+      renderAll();
+
+      barChartMagnitude.addEventListener('filter', evt => {
+        if (!evt.detail.selection) {
+          accDim.filterAll();
+        } else {
+          accDim.filterRange(evt.detail.selection);
+        }
+        renderAll();
+      })
+    })
+  </script>
+</body>
+
+</html>
