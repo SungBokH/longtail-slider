@@ -1,5 +1,9 @@
 import * as d3 from "d3";
 
+// TODO Line example
+// TODO x ticks
+
+// MagChart ?
 export default function BarChartMagnitude({
   data,
   domains = [],
@@ -9,6 +13,7 @@ export default function BarChartMagnitude({
     min: true,
     max: true
   },
+  type = 'bar', // || 'line'
 
   width = 400,
   height = 200,
@@ -35,18 +40,20 @@ export default function BarChartMagnitude({
   // add min/max domains
   const min = d3.min(data)
   const max = d3.max(data)
-  if (domainAuto.min && !domains.includes(min)) { domains.unshift(min) }
-  if (domainAuto.max && !domains.includes(max)) { domains.push(max) }
-  // console.log(domains)
+  if (domainAuto.min && !domains.includes(min) && min < domains[0]) { domains.unshift(min) }
+  if (domainAuto.max && !domains.includes(max) && max > domains[domains.length-1]) { domains.push(max) }
+  // console.log('domains:', domains)
 
-  let brushDomainLeft = domains[0]
-  let brushDomainRight = domains[1]
+  let brushDomainLeft = null//domains[0]
+  let brushDomainRight = null//domains[1]
 
   // add min/max xBins
   if (!xBins.includes(0)) { xBins.unshift(0) }
   if (!xBins.includes(1)) { xBins.push(1) }
   xBins = xBins.map(bin => bin * width)
-  // console.log(xBins)
+  // console.log('xBins:', xBins)
+
+  let filteredBins = []
 
   const svg = d3.create("svg")
     .attr("width", width + marginLeft + marginRight)
@@ -55,11 +62,11 @@ export default function BarChartMagnitude({
 
   // TEMP STYLE SOLUTION => TODO/REDO/RETHINK
   const style = document.createElement('style')
-  style.innerHTML = `
+  style.innerHTML = /*css*/`
     .prism {
         fill: #B0C4DE;
         stroke: #B0C4DE;
-        opacity: 0.7;
+        opacity: 0.5;
         transition: stroke 0.2s, stroke-width 0.2s;
     }
     .prism:hover {
@@ -80,7 +87,8 @@ export default function BarChartMagnitude({
 
     .tick-label {
         fill: #333;
-        font-size: 14px;
+        /*font-size: 14px;*/
+        font: 10px sans-serif;
     }
 
     .bar {
@@ -104,7 +112,8 @@ export default function BarChartMagnitude({
 
     .ref-text {
         fill: #333;
-        font-size: 12px;
+        /*font-size: 12px;*/
+        font: 10px sans-serif;
     }
 
     :root {
@@ -124,6 +133,27 @@ export default function BarChartMagnitude({
         .overlay {
             fill:rgb(223, 223, 223);
         }
+    }
+
+    .line {
+      fill: steelblue;
+      stroke: steelblue;
+      stroke-width: 1;
+    }
+
+    .line.foreground {
+      fill: steelblue;
+    }
+
+    .line.background {
+      stroke: gray;
+      fill: gray;
+      opacity: .3;
+    }
+    
+    .line.tick {
+      fill: none;
+      stroke: gray;
     }
   `
   document.head.appendChild(style)
@@ -152,7 +182,9 @@ export default function BarChartMagnitude({
   }
 
   function chartXPos(value) {
-    return d3.scaleLinear().domain(getDomain(value)).range(getRange(value))(value)
+    return d3.scaleLinear()
+      .domain(getDomain(value))
+      .range(getRange(value))(value)
   }
 
   function getBinIndex(px) {
@@ -164,11 +196,28 @@ export default function BarChartMagnitude({
     return xBins.length - 1
   }
 
+  // TODO fix
   function invertChartXPos(px) {
     const idx = getBinIndex(px)
     const offset = idx > 1 ? rectWidth : 0
-    return d3.scaleLinear().domain([xBins[idx - 1] + offset, xBins[idx]]).range([domains[idx - 1], domains[idx]])(px)
+
+    return d3.scaleLinear()
+      .domain([xBins[idx - 1] + offset, xBins[idx]])
+      .range([domains[idx - 1], domains[idx]])(px)
   }
+
+  // TEST
+  // for (let val = domains[0]; val < domains[domains.length-1]; val += .1) {
+  //   if (Math.abs(val - invertChartXPos(chartXPos(val))) >= .01) {
+  //     console.log(val,
+  //       chartXPos(val),
+  //       invertChartXPos(chartXPos(val))
+  //     )
+  //     debugger
+  //   }
+  // }
+
+
 
   function makeBins(data) {
     let allBins = [];
@@ -195,27 +244,44 @@ export default function BarChartMagnitude({
     return allBins.filter(b => b.values.length > 0);
   }
 
-  const bins = makeBins(data);
-  console.log(bins)
+  let bins = makeBins(data);
+  // console.log(bins)
 
-  const yScales = []
-  for (let i = 0; i < domains.length - 1; ++i) {
-    const isLast = i === domains.length - 2
-    const segBin = bins.filter(b => b.x0 >= domains[i] && b.x0 < domains[i + 1] + (isLast ? 1 : 0));
-    const maxBin = segBin.length > 0 ? d3.max(segBin, d => d.values.length) : 0;
-    yScales.push(d3.scaleLinear().domain([0, maxBin]).range([height, yForPrismTop]))
+  let yScales = []
+  function computeYScales() {
+    yScales = []
+    for (let i = 0; i < domains.length - 1; ++i) {
+      const isLast = i === domains.length - 2
+      const segBin = bins.filter(b => b.x0 >= domains[i] && b.x0 < domains[i + 1] + (isLast ? 1 : 0));
+      const maxBin = segBin.length > 0 ? d3.max(segBin, d => d.values.length) : 0;
+      yScales.push(
+        d3.scaleLinear()
+        .domain([0, maxBin])
+        .range([height, yForPrismTop])
+      )
+    }
   }
+  computeYScales()
 
   let barGroup = g.append("g").classed('barGroup', true);
   // let backgroundBarGroup = g.append("g").classed('background', true);
   let foregroundBarGroup = g.append("g").classed('foreground', true);
 
+  let lineTicks = g.append("path")
+    .classed('line', true)
+    .classed('tick', true)
+  let lineGroup = g.append("path")
+    .classed('line', true)
+  let lineForegroundGroup = g.append("path")
+    .classed('foreground', true)
+    .classed('line', true)
+  
   function getYScaleForBin(b) {
     return yScales[getDomainIndex(b.x0)]
   }
 
   g.append("line")
-    .attr("class", "x-axis-line3")
+    .attr("class", "x-axis-line")
     .attr("x1", 0)
     .attr("x2", width)
     .attr("y1", height)
@@ -231,6 +297,7 @@ export default function BarChartMagnitude({
     .call(brush);
 
   function setBrushSelection() {
+    if (brushDomainLeft === null || brushDomainRight === null) return
     const left = chartXPos(brushDomainLeft);
     const right = chartXPos(brushDomainRight);
     gBrush.call(brush.move, [left, right]);
@@ -243,7 +310,9 @@ export default function BarChartMagnitude({
   function brushedChart(event) {
     const s = event.selection;
     if (!s) {
-      barGroup.selectAll(".bar").classed("highlighted", false);
+      // barGroup.selectAll(".bar").classed("highlighted", false);
+
+      brushDomainLeft = brushDomainRight = null
 
       // only when sourceEvent is defined, like mousemove (user input)
       // will not fire when prism are moved on `gBrush.call(brush.move, [left, right])`
@@ -255,21 +324,21 @@ export default function BarChartMagnitude({
     const [pxLeft, pxRight] = s;
     const domainLeft = invertChartXPos(pxLeft);
     const domainRight = invertChartXPos(pxRight);
+    // console.log(pxRight, domainRight)
 
-    barGroup.selectAll(".bar")
-      .classed("highlighted", d => d.x0 >= domainLeft && d.x1 <= domainRight);
+    // barGroup.selectAll(".bar")
+    //   .classed("highlighted", d => d.x0 >= domainLeft && d.x1 <= domainRight);
 
-    if (event.type === "end") {
+    // if (event.type === "end") {
       brushDomainLeft = domainLeft
       brushDomainRight = domainRight
-    }
+    // }
 
     if (event.sourceEvent) {
       filterTrigger({ selection: [domainLeft, domainRight] })
     }
   }
 
-  // https://stackoverflow.com/questions/9461621/format-a-number-as-2-5k-if-a-thousand-or-more-otherwise-900
   function nFormatter(num, digits) {
     const lookup = [
       { value: 1, symbol: "" },
@@ -281,28 +350,113 @@ export default function BarChartMagnitude({
       { value: 1e18, symbol: "E" }
     ];
     const regexp = /\.0+$|(?<=\.[0-9]*[1-9])0+$/;
-    const item = lookup.findLast(item => num >= item.value);
-    return item ? (num / item.value).toFixed(digits).replace(regexp, "").concat(item.symbol) : "0";
+    const absNum = Math.abs(num); // Handle negative numbers
+    const item = lookup.findLast(item => absNum >= item.value);
+    return item ? 
+        (num < 0 ? "-" : "") + (absNum / item.value).toFixed(digits).replace(regexp, "") + item.symbol 
+        : "0";
   }
 
-  function updateCharts() {
-    barGroup.selectAll(".bar").remove();
-
-    // TODO background/foreground bars for crossfilter
-
-    barGroup.selectAll(".bar")
-      .data(bins)
-      .enter()
-      .append("rect")
-      .attr("class", "bar")
+  const updateForegroundBar = update => update
       .attr("x", d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
       .attr("y", d => getYScaleForBin(d)(d.values.length))
       .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
-      .attr("height", d => height - getYScaleForBin(d)(d.values.length));
+      .attr("height", d => height - getYScaleForBin(d)(d.values.length))
+
+  function updateCharts() {
+    lineGroup.style('display', 'none');
+    // lineForegroundGroup.style('display', 'none');
+
+    barGroup.selectAll(".bar").remove();
+    // foregroundBarGroup.selectAll(".bar").remove();
+
+    if (type === 'bar') {
+      barGroup.selectAll(".bar")
+        .data(bins)
+        .enter()
+        .append("rect")
+        .attr("class", "bar")
+        .attr("x", d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
+        .attr("y", d => getYScaleForBin(d)(d.values.length))
+        .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
+        .attr("height", d => height - getYScaleForBin(d)(d.values.length));
+      
+      foregroundBarGroup.selectAll(".bar")
+        .data(filteredBins, d => d.x0)
+        .join(
+          enter => enter
+            .append("rect")
+            .attr("class", "bar")
+            .call(updateForegroundBar),
+          updateForegroundBar,
+          exit => exit.remove()
+        )
+    } else if (type === 'line') {
+      // TODO add first/last points on x-axis
+
+      function add_first_last(bins) {
+        let ret = bins
+        if (bins.length > 0) {
+          const first = bins[0]
+          const last = bins[bins.length - 1]
+          ret = [
+            {x0:first.x0, x1:first.x0, values:[]},
+            ...bins,
+            {x0:last.x1, x1:last.x1, values:[]},
+          ]
+        }
+        return ret
+      }
+
+
+      const line = d3.line()
+        .x(d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
+        .y(d => getYScaleForBin(d)(d.values.length))
+
+
+      function domainsToLineTicks() {
+        const lineTicks = []
+        for (const d of domains) {
+          if (lineTicks.length > 0) lineTicks.push({
+            x0: d-1,
+            x1: d-1,
+            values: Array(20)
+          })
+          lineTicks.push({
+            x0: d,
+            x1: d,
+            values: Array(20)
+          })
+        }
+        return lineTicks
+      }
+      console.log(domainsToLineTicks())
+
+      lineTicks
+        .datum(domainsToLineTicks(), d => d.x0)
+        .attr('d', line)
+        .attr('stroke-dasharray', 4)
+      .attr('fill', 'none')
+        .style('display', null)
+
+      lineGroup
+        .datum(add_first_last(bins), d => d.x0)
+        .attr('d', line)
+        .style('display', null)
+
+      lineForegroundGroup
+        .datum(add_first_last(filteredBins), d => d.x0)
+        .attr('d', line)
+        // .style('display', null)
+    }
 
     g.selectAll(".y-tick,.x-tick,.seg-scale-axis").remove();
 
-    const xTickSelection = g.selectAll(".x-tick").data(domains).enter().append("g").attr("class", "x-tick");
+    const xTickSelection = g.selectAll(".x-tick")
+      .data(domains)
+      .enter()
+      .append("g")
+      .attr("class", "x-tick");
     xTickSelection.append("line").attr("class", "tick-line");
     xTickSelection.append("text").attr("class", "tick-label");
     xTickSelection.each(function(d) {
@@ -356,7 +510,7 @@ export default function BarChartMagnitude({
       }
     }
 
-    // setBrushSelection();
+    setBrushSelection();
   }
 
   function createPrism(x, y, dragBehavior) {
@@ -379,6 +533,7 @@ export default function BarChartMagnitude({
       .on("start", function() { d3.select(this).raise(); })
       .on("drag", function(event) {
         let newX = event.x - rectWidth / 2;
+        // TODO ensure no overlap
         newX = Math.max(0, Math.min(xBins[i + 1] - rectWidth - 50, newX));
         xBins[i] = newX;
         updatePrisms();
@@ -403,29 +558,37 @@ export default function BarChartMagnitude({
 
   updateCharts();
 
+  // TODO filter instead of crossfilter
   node.crossfilter = (filteredData) => {
     if (!filteredData) { // no filter
       console.log('no filter')
       barGroup.classed('background', false)
-      foregroundBarGroup.selectAll(".bar").remove()
-      return
+      lineGroup.classed('background', false)
+      filteredBins = []
+    } else {
+      barGroup.classed('background', true)
+      lineGroup.classed('background', true)
+      filteredBins = makeBins(filteredData);
     }
+    
+    updateCharts();
+  }
 
-    const filteredBins = makeBins(filteredData);
-    barGroup.classed('background', true)
-    foregroundBarGroup.selectAll(".bar")
-      .data(filteredBins, d => d.x0)
-      .join(
-        enter => enter
-          .append("rect")
-          .attr("class", "bar"),
-        update => update
-          .attr("x", d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
-          .attr("y", d => getYScaleForBin(d)(d.values.length))
-          .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
-          .attr("height", d => height - getYScaleForBin(d)(d.values.length)),
-          exit => exit.remove()
-      )
+  // getters/setters
+  node.type = (_type) => {
+    if (!_type) return type
+    type = _type
+    updateCharts()
+    return node
+  }
+
+  node.binSize = (_binSize) => {
+    if (!_binSize) return binSize
+    binSize = _binSize
+    bins = makeBins(data)
+    computeYScales()
+    updateCharts()
+    return node
   }
 
   return node

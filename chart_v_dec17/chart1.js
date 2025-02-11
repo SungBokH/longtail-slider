@@ -27,6 +27,8 @@ const wealthBottom90 = d3.range(10, 101, 10).map(i => ({
     y: 200000 * Math.pow(0.85, (i-10)/10)
 }));
 
+console.log(wealthTop1)
+
 const rectWidth = 40 * scaleFactor; 
 const apexOffsetTop = 20 * scaleFactor; 
 const yForPrismTop = apexOffsetTop; 
