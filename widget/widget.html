@@ -22,7 +22,7 @@
     <div id="chart1"></div>
   </div> -->
   <figure id="chart2-container">
-    <figcaption>Gaussian (salary in France)</figcaption>
+    <figcaption>City population</figcaption>
     <div id="chart2"></div>
   </figure>
   <script type="module">
@@ -77,15 +77,18 @@
 
       const barChartMagnitude = BarChartMagnitude({
         data: population,//randomSalary,
-        domains: [0, 5_000, 250_000, 1_000_000], // divide x axis on 100K and 1M
-        xBins: [.25, .55, .75], // in percent on the x axis, the position of domain separators
-        binSize: [500, 25_000, 100_000, 2_500_000], // size of bin for each division
-        domainAuto: { min: false }
+        domains: [0,300_000, 1_000_000, 10_000_000], // divide x axis on 100K and 1M
+        xBins: [.30, .65 ], // in percent on the x axis, the position of domain separators
+        binSize: [5_000, 20_000, 100_000], // size of bin for each division
+        domainAuto: { min: false },
         // y: (binData, i) => {
         //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
         //   return d3.scaleLinear().domain([0, max])
         // },
       })
+
+  
+
 
       barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
 
@@ -94,6 +97,10 @@
       //   barChartMagnitude.updateData()
       // }, 400) 
 
+
+
+
+      //barChartMagnitude.customGridLine([2000000,4000000,6000000,8000000], [ 15, 20, 25, 50000])
       document.querySelector('#chart2').append(barChartMagnitude)
     }
     initChart()

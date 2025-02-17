@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <title>December 8,9 Works. (Area Chart)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .area {
+            fill: #4B5366;
+            fill-opacity: 0.3; /* Adjust if you want more/less opacity */
+            stroke: #4B5366;  /* Keeps a border line around the area */
+            stroke-width: 2;
+        }
+        .prism {
+            opacity: 0.3;
+            fill: #B0C4DE;
+            stroke: #B0C4DE;
+        }
+        .connector-area {
+            fill: lightgray;
+            opacity: 0.5;
+        }
+        .connector-line {
+            stroke: gray;
+            stroke-width: 2;
+        }
+        .x-axis-line {
+            stroke: black;
+            stroke-width: 1;
+        }
+        .tick-line {
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .tick-label {
+            fill: #333;
+            font-size: 10px;
+        }
+        .brush-area .selection {
+            fill: steelblue;
+            fill-opacity: 0.3;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+        .brush-area .handle {
+            fill: #fff;
+            stroke: #000;
+            cursor: ew-resize;
+        }
+        .selected-zone {
+            fill: orange;
+            fill-opacity: 0.2;
+        }
+        .grid-line {
+            stroke: #ccc;
+            stroke-width: 1;
+            shape-rendering: crispEdges;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggleGrid">Toggle Grid</button>
+    <h4>Weekend 1er Decembre</h4>
+    <div id="chart"></div>
+    <script>
+        const scaleFactor = 0.7;
+        const originalWidth = 400, originalHeight = 150;
+        const width = originalWidth * scaleFactor;
+        const height = originalHeight * scaleFactor;
+        const margin = {
+            top: 20 * scaleFactor,
+            right: 30 * scaleFactor,
+            bottom: 50 * scaleFactor,
+            left: 60 * scaleFactor
+        };
+        const blankSpace = 20 * scaleFactor;
+
+        let brushPadding = 20 * scaleFactor + 19; // about 0.5cm lower than before
+        const brushHeight = 30 * scaleFactor; 
+        const totalHeight = height + brushHeight + brushPadding + margin.top + margin.bottom;
+
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", totalHeight);
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        const brushG = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top + height + brushPadding})`);
+
+        const availableWidth = width - blankSpace;
+
+        const topWealth = 500000; 
+        const bottomMaxWealth = 45000;
+        const bottomMinWealth = 1000;
+
+        const wealthTop10 = d3.range(0, 10).map(i => ({
+            x: i,
+            y: topWealth * Math.pow(0.85, i)
+        }));
+        wealthTop10.push({ x: 10, y: topWealth * Math.pow(0.85,10) });
+
+        const wealthBottom90 = d3.range(10, 101, 10).map(i => ({
+            x: i,
+            y: bottomMaxWealth * Math.pow(0.85, (i - 10) / 10) + bottomMinWealth * Math.pow(0.15, (i - 10) / 10)
+        }));
+
+        const yScaleTop = d3.scaleLinear()
+            .domain([0, d3.max(wealthTop10, d => d.y)])
+            .range([height, 0]);
+
+        const yScaleBottom = d3.scaleLinear()
+            .domain([0, d3.max(wealthBottom90, d => d.y)])
+            .range([height, 0]);
+
+        const rectWidth = 20 * scaleFactor, rectHeight = 145 * scaleFactor;
+        let rectY = (height - rectHeight) - 8;
+
+        const pixelForX10 = availableWidth * 0.1;
+        let rectX = pixelForX10 - (rectWidth / 2);
+
+        let xScaleTop, xScaleBottom;
+        // Will now be area generators instead of lines:
+        let areaTop, areaBottom;
+
+        // Area paths (instead of lines)
+        const topAreaPath = g.append("path").datum(wealthTop10).attr("class", "area");
+        const bottomAreaPath = g.append("path").datum(wealthBottom90).attr("class", "area");
+
+        // Connector elements
+        const connectorArea = g.append("polygon").attr("class", "connector-area");
+        const connectorLine = g.append("line").attr("class", "connector-line");
+
+        // X-axis line
+        g.append("line")
+            .attr("class", "x-axis-line")
+            .attr("x1", 0)
+            .attr("x2", availableWidth)
+            .attr("y1", height)
+            .attr("y2", height);
+
+        // Tick groups
+        const topYTicksGroup = g.append("g");
+        const bottomYTicksGroup = g.append("g");
+        const topXTicksGroup = g.append("g");
+        const bottomXTicksGroup = g.append("g");
+
+        // Selected zone rectangle
+        const selectedZone = g.append("rect")
+            .attr("class", "selected-zone")
+            .attr("y", 0)
+            .attr("height", height)
+            .attr("width", 0)
+            .attr("x", 0)
+            .style("display","none");
+
+        // Grid group
+        const gridGroup = g.append("g").attr("class", "grid");
+        let gridVisible = true;
+
+        document.getElementById("toggleGrid").addEventListener("click", () => {
+            gridVisible = !gridVisible;
+            gridGroup.style("display", gridVisible ? "block" : "none");
+        });
+
+        function chartXPos(d) {
+            const boundaryPixel = rectX + rectWidth/2;
+            if (d <= 10) {
+                return (d/10)*boundaryPixel;
+            } else {
+                return boundaryPixel + ((d - 10)/(100 - 10))*(availableWidth - boundaryPixel);
+            }
+        }
+
+        function chartXDomain(px) {
+            const boundaryPixel = rectX + rectWidth/2;
+            if (px <= boundaryPixel) {
+                return (px / boundaryPixel)*10;
+            } else {
+                return 10 + ((px - boundaryPixel)/(availableWidth - boundaryPixel))*90;
+            }
+        }
+
+        // Brush setup
+        const brush = d3.brushX()
+            .extent([[0,0],[availableWidth,brushHeight]])
+            .on("brush end", brushed);
+
+        const brushArea = brushG.append("g")
+            .attr("class", "brush-area")
+            .call(brush);
+
+        brushG.append("line")
+            .attr("x1",0)
+            .attr("x2",availableWidth)
+            .attr("y1",brushHeight)
+            .attr("y2",brushHeight)
+            .attr("stroke","black")
+            .attr("stroke-width",1);
+
+        // Initialize brush selection from [20,50]
+        const initialDomain = [20,50];
+        const initialPixels = [chartXPos(initialDomain[0]), chartXPos(initialDomain[1])];
+        brush.move(brushArea, initialPixels);
+
+        function brushed(event) {
+            const selection = event.selection;
+            if (selection) {
+                const domain0 = chartXDomain(selection[0]);
+                const domain1 = chartXDomain(selection[1]);
+                const x0 = chartXPos(domain0);
+                const x1 = chartXPos(domain1);
+                selectedZone
+                    .style("display", null)
+                    .attr("x", x0)
+                    .attr("width", x1 - x0);
+            } else {
+                selectedZone.style("display","none");
+            }
+        }
+
+        function updateCharts() {
+            // X scales
+            xScaleTop = d3.scaleLinear()
+                .domain([0, 10])
+                .range([0, rectX + rectWidth / 2]);
+
+            xScaleBottom = d3.scaleLinear()
+                .domain([10, 100])
+                .range([rectX + rectWidth / 2, availableWidth]);
+
+            // Area generators
+            areaTop = d3.area()
+                .x(d => xScaleTop(d.x))
+                .y0(height)
+                .y1(d => yScaleTop(d.y));
+
+            areaBottom = d3.area()
+                .x(d => xScaleBottom(d.x))
+                .y0(height)
+                .y1(d => yScaleBottom(d.y));
+
+            // Update area paths
+            topAreaPath.attr("d", areaTop);
+            bottomAreaPath.attr("d", areaBottom);
+
+            // Connector
+            const topEnd = wealthTop10.find(d => d.x === 10);
+            const bottomStart = wealthBottom90[0];
+
+            connectorArea
+                .attr("points", `
+                    ${xScaleTop(10)},${yScaleTop(topEnd.y)}
+                    ${xScaleTop(10)},${height}
+                    ${xScaleBottom(10)},${height}
+                    ${xScaleBottom(10)},${yScaleBottom(bottomStart.y)}
+                `);
+
+            connectorLine
+                .attr("x1", xScaleTop(10))
+                .attr("y1", yScaleTop(topEnd.y))
+                .attr("x2", xScaleBottom(10))
+                .attr("y2", yScaleBottom(bottomStart.y));
+
+            // Calculate tick counts
+            const topChartWidth = rectX + rectWidth / 2;
+            const bottomChartWidth = availableWidth - (rectX + rectWidth / 2);
+            const topTickCount = Math.max(1, Math.floor(topChartWidth / 40));
+            const bottomTickCount = Math.max(1, Math.floor(bottomChartWidth / 40));
+
+            // Y-ticks top
+            const topTicks = yScaleTop.ticks(5);
+            const topTickSelection = topYTicksGroup.selectAll(".top-y-tick").data(topTicks);
+            topTickSelection.exit().remove();
+            const topTickEnter = topTickSelection.enter().append("g").attr("class", "top-y-tick");
+            topTickEnter.append("line").attr("class", "tick-line");
+            topTickEnter.append("text").attr("class", "tick-label");
+
+            topTickSelection.merge(topTickEnter)
+                .each(function(d) {
+                    const yPos = yScaleTop(d);
+                    d3.select(this).select("line")
+                        .attr("x1", rectX)
+                        .attr("x2", rectX - 6)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+                    d3.select(this).select("text")
+                        .attr("x", rectX - 8)
+                        .attr("y", yPos)
+                        .attr("text-anchor", "end")
+                        .text(d.toFixed(0));
+                });
+
+            // Y-ticks bottom
+            const bottomTicks = yScaleBottom.ticks(5);
+            const bottomTickSelection = bottomYTicksGroup.selectAll(".bottom-y-tick").data(bottomTicks);
+            bottomTickSelection.exit().remove();
+            const bottomTickEnter = bottomTickSelection.enter().append("g").attr("class", "bottom-y-tick");
+            bottomTickEnter.append("line").attr("class", "tick-line");
+            bottomTickEnter.append("text").attr("class", "tick-label");
+
+            bottomTickSelection.merge(bottomTickEnter)
+                .each(function(d) {
+                    const yPos = yScaleBottom(d);
+                    d3.select(this).select("line")
+                        .attr("x1", rectX + rectWidth)
+                        .attr("x2", rectX + rectWidth + 6)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+                    d3.select(this).select("text")
+                        .attr("x", rectX + rectWidth + 8)
+                        .attr("y", yPos)
+                        .attr("text-anchor", "start")
+                        .text(d.toFixed(0));
+                });
+
+            // x-ticks top
+            const topXTicks = d3.scaleLinear().domain([0,10]).ticks(topTickCount);
+            const topXTickSelection = topXTicksGroup.selectAll(".top-x-tick").data(topXTicks);
+            topXTickSelection.exit().remove();
+            const topXTickEnter = topXTickSelection.enter().append("g").attr("class", "top-x-tick");
+            topXTickEnter.append("line").attr("class", "tick-line");
+            topXTickEnter.append("text").attr("class", "tick-label");
+
+            topXTickSelection.merge(topXTickEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", height)
+                        .attr("y2", height - 6);
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", height + 12)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            // x-ticks bottom
+            const bottomXTicks = d3.scaleLinear().domain([10,100]).ticks(bottomTickCount);
+            const bottomXTickSelection = bottomXTicksGroup.selectAll(".bottom-x-tick").data(bottomXTicks);
+            bottomXTickSelection.exit().remove();
+            const bottomXTickEnter = bottomXTickSelection.enter().append("g").attr("class", "bottom-x-tick");
+            bottomXTickEnter.append("line").attr("class", "tick-line");
+            bottomXTickEnter.append("text").attr("class", "tick-label");
+
+            bottomXTickSelection.merge(bottomXTickEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", height)
+                        .attr("y2", height - 6);
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", height + 12)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            // Brush ticks for [0,100]
+            const brushTickCount = 6; 
+            const brushTicks = d3.scaleLinear().domain([0,100]).ticks(brushTickCount);
+
+            const brushTickSelection = brushG.selectAll(".brush-axis-tick").data(brushTicks);
+            brushTickSelection.exit().remove();
+            const brushTickEnter = brushTickSelection.enter().append("g").attr("class", "brush-axis-tick");
+            brushTickEnter.append("line").attr("class", "tick-line");
+            brushTickEnter.append("text").attr("class", "tick-label");
+
+            brushTickSelection.merge(brushTickEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", brushHeight)
+                        .attr("y2", brushHeight - 5);
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", brushHeight + 12)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            brushG.selectAll(".brush-axis-baseline").data([null])
+                .join("line")
+                .attr("class", "brush-axis-baseline")
+                .attr("x1",0)
+                .attr("x2",availableWidth)
+                .attr("y1",brushHeight)
+                .attr("y2",brushHeight)
+                .attr("stroke","black")
+                .attr("stroke-width",1);
+
+            // Top 10% ticks in brush
+            const top10BrushTicks = d3.scaleLinear().domain([0,10]).ticks(Math.max(2, topTickCount));
+            const top10TickSelection = brushG.selectAll(".top10-brush-tick").data(top10BrushTicks);
+            top10TickSelection.exit().remove();
+            const top10TickEnter = top10TickSelection.enter().append("g").attr("class", "top10-brush-tick");
+            top10TickEnter.append("line").attr("class", "tick-line");
+            top10TickEnter.append("text").attr("class", "tick-label");
+
+            top10TickSelection.merge(top10TickEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", brushHeight)
+                        .attr("y2", brushHeight - 5);
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", brushHeight + 12)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            // Bottom 90% ticks in brush [10,100]
+            const bottom90BrushTicks = d3.scaleLinear().domain([10,100]).ticks(bottomTickCount);
+            const bottom90TickSelection = brushG.selectAll(".bottom90-brush-tick").data(bottom90BrushTicks);
+            bottom90TickSelection.exit().remove();
+            const bottom90TickEnter = bottom90TickSelection.enter().append("g").attr("class", "bottom90-brush-tick");
+            bottom90TickEnter.append("line").attr("class", "tick-line");
+            bottom90TickEnter.append("text").attr("class", "tick-label");
+
+            bottom90TickSelection.merge(bottom90TickEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this).select("line")
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", brushHeight)
+                        .attr("y2", brushHeight - 5);
+                    d3.select(this).select("text")
+                        .attr("x", xPos)
+                        .attr("y", brushHeight + 12)
+                        .attr("text-anchor", "middle")
+                        .text(d.toFixed(0));
+                });
+
+            // Vertical grid lines (all x ticks combined)
+            const allGridXTicks = topXTicks.concat(bottomXTicks);
+            const verticalGridSelection = gridGroup.selectAll(".vertical-grid-line").data(allGridXTicks);
+            verticalGridSelection.exit().remove();
+            const verticalGridEnter = verticalGridSelection.enter().append("line").attr("class", "grid-line vertical-grid-line");
+
+            verticalGridSelection.merge(verticalGridEnter)
+                .each(function(d) {
+                    const xPos = chartXPos(d);
+                    d3.select(this)
+                        .attr("x1", xPos)
+                        .attr("x2", xPos)
+                        .attr("y1", 0)
+                        .attr("y2", height);
+                });
+
+            // Horizontal grid lines for top scale
+            const horizontalTopGridSelection = gridGroup.selectAll(".horizontal-top-grid-line").data(topTicks);
+            horizontalTopGridSelection.exit().remove();
+            const horizontalTopGridEnter = horizontalTopGridSelection.enter().append("line").attr("class", "grid-line horizontal-top-grid-line");
+            horizontalTopGridSelection.merge(horizontalTopGridEnter)
+                .each(function(d) {
+                    const yPos = yScaleTop(d);
+                    // Line from x=0 to x=rectX
+                    d3.select(this)
+                        .attr("x1", 0)
+                        .attr("x2", rectX)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+                });
+
+            // Horizontal grid lines for bottom scale
+            const horizontalBottomGridSelection = gridGroup.selectAll(".horizontal-bottom-grid-line").data(bottomTicks);
+            horizontalBottomGridSelection.exit().remove();
+            const horizontalBottomGridEnter = horizontalBottomGridSelection.enter().append("line").attr("class", "grid-line horizontal-bottom-grid-line");
+            horizontalBottomGridSelection.merge(horizontalBottomGridEnter)
+                .each(function(d) {
+                    const yPos = yScaleBottom(d);
+                    // Line from x=rectX+rectWidth to x=availableWidth
+                    d3.select(this)
+                        .attr("x1", rectX + rectWidth)
+                        .attr("x2", availableWidth)
+                        .attr("y1", yPos)
+                        .attr("y2", yPos);
+                });
+        }
+
+        // Initial draw
+        updateCharts();
+
+        // Draggable prism
+        const drag = d3.drag()
+            .on("start", function () { d3.select(this).raise(); })
+            .on("drag", function (event) {
+                let newX = event.x - rectWidth / 2;
+                newX = Math.max(0, Math.min(availableWidth - rectWidth, newX));
+                rectX = newX;
+
+                rect.attr("x", rectX);
+                topTriangle.attr("points",
+                    `${rectX},${rectY} 
+                     ${rectX + rectWidth},${rectY} 
+                     ${rectX + rectWidth / 2},${rectY - 10 * scaleFactor}`
+                );
+                bottomTriangle.attr("points",
+                    `${rectX},${rectY + rectHeight} 
+                     ${rectX + rectWidth},${rectY + rectHeight} 
+                     ${rectX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}`
+                );
+
+                updateCharts();
+            });
+
+        const rect = g.append("rect")
+            .attr("x", rectX)
+            .attr("y", rectY)
+            .attr("width", rectWidth)
+            .attr("height", rectHeight)
+            .attr("class", "prism")
+            .call(drag);
+
+        const topTriangle = g.append("polygon")
+            .attr("class", "prism")
+            .attr("points",
+                `${rectX},${rectY} 
+                 ${rectX + rectWidth},${rectY} 
+                 ${rectX + rectWidth / 2},${rectY - 10 * scaleFactor}`
+            )
+            .call(drag);
+
+        const bottomTriangle = g.append("polygon")
+            .attr("class", "prism")
+            .attr("points",
+                `${rectX},${rectY + rectHeight} 
+                 ${rectX + rectWidth},${rectY + rectHeight} 
+                 ${rectX + rectWidth / 2},${rectY + rectHeight + 10 * scaleFactor}`
+            )
+            .call(drag);
+    </script>
+</body>
+</html>

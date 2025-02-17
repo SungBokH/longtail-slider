@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iterate, Iterate, and Iterate</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "d3": "https://cdn.jsdelivr.net/npm/d3@7/+esm"
+      }
+    }
+  </script>
+  
+  <link rel="stylesheet" href="../chart_v_dec17/style.css">
+</head>
+
+<body>
+  <!-- <div class="charts-container">
+    <h4>Pareto (Percentile)</h4>
+    <div id="chart1"></div>
+  </div> -->
+  <figure id="chart2-container">
+    <figcaption>Emergency-Affected People</figcaption>
+    <div id="chart1"></div>
+    <figcaption>Emergency Damage (USD)</figcaption>
+    <div id="chart2"></div>
+    <figcaption>Emergency Deaths</figcaption>
+    <div id="chart3"></div>
+    <figcaption>House Sqft of Living Area</figcaption>
+    <div id="chart4"></div>
+    <figcaption>House Sqft of the lot</figcaption>
+    <div id="chart5"></div>
+    <figcaption>House price (USD)</figcaption>
+    <div id="chart6"></div>
+  </figure>
+  <script type="module">
+    import * as d3 from "d3";
+    import BarChartMagnitude from './widget.js'
+
+
+    async function initChart_1() {
+      
+      const cities = await d3.dsv(',', 'emergency_affected.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 400_000, 600_000 ], // divide x axis on 100K and 1M
+        xBins: [.50 ], // in percent on the x axis, the position of domain separators
+        binSize: [20_000, 2000 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      barChartMagnitude.drawMultipleHorizontalLines([5, 10, 20, 30, 2000]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 100000, stroke: "orange" },
+      { value: 200000, stroke: "orange" },
+      { value: 300000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 400000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 500000, stroke: "black", strokeDasharray: "2,3" },    
+    ]);
+
+      document.querySelector('#chart1').append(barChartMagnitude)
+    }
+    async function initChart_2() {
+      
+      const cities = await d3.dsv(',', 'emergency_damage.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 5000_000, 5000000_000, 20000000_000], // divide x axis on 100K and 1M
+        xBins: [.27, .63 ], // in percent on the x axis, the position of domain separators
+        binSize: [250_000, 120000_000, 300000_000 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      barChartMagnitude.drawMultipleHorizontalLines([5, 100, 500, 1000, 5000]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 1000000, stroke: "orange" },
+      { value: 10000000, stroke: "orange" },
+      { value: 1000000000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 10000000000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 15000000000, stroke: "black", strokeDasharray: "2,3" },    
+    ]);
+      document.querySelector('#chart2').append(barChartMagnitude)
+    }
+    
+    async function initChart_3() {
+      
+      const cities = await d3.dsv(',', 'emergency_deaths.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 500, 50_000, 5000_000], // divide x axis on 100K and 1M
+        xBins: [.27, .63 ], // in percent on the x axis, the position of domain separators
+        binSize: [10, 1_000, 100_000 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      barChartMagnitude.drawMultipleHorizontalLines([5, 100, 200, 300, 500, 1000, 3000]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 100, stroke: "orange" },
+      { value: 300, stroke: "orange" },
+      { value: 1000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 10000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 100000, stroke: "black", strokeDasharray: "2,3" },    
+      { value: 1000000, stroke: "black", strokeDasharray: "2,3" },    
+      { value: 3000000, stroke: "black", strokeDasharray: "2,3" },    
+    ]);
+      document.querySelector('#chart3').append(barChartMagnitude)
+    }
+   
+    async function initChart_4() {
+      
+      const cities = await d3.dsv(',', 'house_sqft_living.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 7_000, 15_000], // divide x axis on 100K and 1M
+        xBins: [.60 ], // in percent on the x axis, the position of domain separators
+        binSize: [ 100, 500 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      barChartMagnitude.drawMultipleHorizontalLines([500, 1000, 10, 5]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 5, stroke: "orange" },
+      { value: 100, stroke: "orange" },
+      { value: 1000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 5000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 10000, stroke: "black", strokeDasharray: "2,3" },      
+    ]);
+    document.querySelector('#chart4').append(barChartMagnitude)
+    }
+    /*
+    async function initChart_5() {
+      
+      const cities = await d3.dsv(',', 'house_sqft_lot.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 50_000, 1000_000, 1800_000], // divide x axis on 100K and 1M
+        xBins: [.35 ,.8 ], // in percent on the x axis, the position of domain separators
+        binSize: [2500, 50_000, 90_000 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+
+      document.querySelector('#chart5').append(barChartMagnitude)
+    }*/
+    async function initChart_5() {
+  const cities = await d3.dsv(',', 'house_sqft_lot.csv', d => {
+    d.population = parseInt(d.population);
+    return d;
+  });
+  const population = cities.map(d => d.population);
+
+  const barChartMagnitude = BarChartMagnitude({
+    data: population,
+    domains: [0, 50_000, 1000_000, 1800_000], // domain divisions
+    xBins: [0.35, 0.6],                      // positions of domain separators
+    binSize: [1000, 20_000, 40_000],         // bin sizes in each domain region
+    domainAuto: { min: false }
+  });
+
+  barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail));
+  barChartMagnitude.drawMultipleHorizontalLines([2500, 1000, 500, 300, 100]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 10000, stroke: "orange" },
+      { value: 100000, stroke: "orange" },
+      { value: 500000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 1500000, stroke: "black", strokeDasharray: "1,2" },   
+    ]);
+  document.querySelector('#chart5').append(barChartMagnitude);
+
+  // ---- BELOW is the extra code that replaces bars with an area chart ----
+  // Give the chart a moment to render (if needed). You can wrap in a setTimeout
+  // or requestAnimationFrame if the component is rendered asynchronously.
+  setTimeout(() => {
+    // 1) Grab the <svg> inside your custom chart element.
+    //    Depending on how BarChartMagnitude is built, you may need to select 
+    //    differently (e.g. a shadowRoot, or `.querySelector('svg')`, etc.).
+    const svg = d3.select(barChartMagnitude).select('svg');
+
+    // 2) Remove existing bars (rectangles).
+    svg.selectAll('rect').remove();
+
+    // 3) Rebuild or retrieve the bin data & scales. 
+    //    This part depends heavily on how BarChartMagnitude organizes data/scales.
+    //    The snippet below assumes:
+    //      - barChartMagnitude.bins is the array of bin objects 
+    //        (with .x0, .x1, and .length or .values.length).
+    //      - barChartMagnitude.x and barChartMagnitude.y are the scales used.
+    //    Replace these with the actual properties/methods from your custom chart.
+    const bins = barChartMagnitude.bins;       // or however you can access the binned data
+    const xScale = barChartMagnitude.x;        // or your chart’s x-scale
+    const yScale = barChartMagnitude.y;        // or your chart’s y-scale
+
+    // 4) Create an area generator. 
+    //    Adjust x/y accessors to match your actual bin data structure.
+    const area = d3.area()
+      .x(d => xScale((d.x0 + d.x1) / 2))  // midpoint of the bin
+      .y0(yScale(0))
+      .y1(d => yScale(d.length || d.values.length));  // whichever your bin uses
+
+    // 5) Append a <path> element for the area shape.
+    svg.append('path')
+      .datum(bins)
+      .attr('fill', '#000080')  // Dark blue fill
+      .attr('stroke', 'none')
+      .attr('d', area);
+
+    // 6) Finally, set grid lines to white (if your chart uses them).
+    //    Again, this depends on how your axes and grids are drawn.
+    svg.selectAll('.grid line')
+      .attr('stroke', 'white');
+    
+    // If your axes or domain lines also need to be white,
+    // you can do something like:
+    svg.selectAll('.domain')
+      .attr('stroke', 'white');
+    svg.selectAll('.tick line')
+      .attr('stroke', 'white');
+    svg.selectAll('.tick text')
+      .attr('fill', 'white'); // If you want the text white as well
+  }, 0);
+}
+
+    async function initChart_6() {
+      
+      const cities = await d3.dsv(',', 'house_price.csv', d => {
+        d.population = parseInt(d.population)
+        return d
+      })
+      const population = cities.map(d => d.population)
+      console.log(cities, d3.min(population), d3.max(population))
+
+      const barChartMagnitude = BarChartMagnitude({
+        data: population,//randomSalary,
+        domains: [0, 2000_000, 8000_000], // divide x axis on 100K and 1M
+        xBins: [.7 ], // in percent on the x axis, the position of domain separators
+        binSize: [50_000, 250_000 ], // size of bin for each division
+        domainAuto: { min: false }
+        // y: (binData, i) => {
+        //   const max = binData.length > 0 ? d3.max(binData, d => d.values.length) : 0
+        //   return d3.scaleLinear().domain([0, max])
+        // },
+      })
+
+      barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail))
+
+      // setInterval(() => {
+      //   randomSalary.pop()
+      //   barChartMagnitude.updateData()
+      // }, 400) 
+      barChartMagnitude.drawMultipleHorizontalLines([2000, 1000, 50, 30, 10]);
+      barChartMagnitude.drawVerticalLines([
+      { value: 100000, stroke: "orange" },
+      { value: 500000, stroke: "orange" },
+      { value: 1000000, stroke: "black", strokeDasharray: "1,2" },
+      { value: 2000000, stroke: "black", strokeDasharray: "1,2" },   
+      { value: 4000000, stroke: "black", strokeDasharray: "1,2" },   
+      { value: 6000000, stroke: "black", strokeDasharray: "1,2" },  
+    ]);
+      document.querySelector('#chart6').append(barChartMagnitude)
+    }
+
+    initChart_1()
+    initChart_2()
+    initChart_3()
+    initChart_4()
+    initChart_5()
+    initChart_6()
+  </script>
+</body>
+
+</html>
