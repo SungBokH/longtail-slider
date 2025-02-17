@@ -72,8 +72,6 @@ export default function BarChartMagnitude({
       stroke-width: 2;
     }
 
-    /* REMOVED a line-based global x-axis styling since we removed the global axis */
-
     .tick-line {
       stroke: #333;
       stroke-width: 1;
@@ -166,6 +164,14 @@ export default function BarChartMagnitude({
     .seg-scale-axis text {
       font: 10px sans-serif;
       fill: #333;
+    }
+
+    /* Toggle text */
+    .toggle-label {
+      fill: #333;
+      font: 12px sans-serif;
+      cursor: pointer;
+      user-select: none;
     }
   `;
   document.head.appendChild(style);
@@ -271,9 +277,6 @@ export default function BarChartMagnitude({
   let lineGroup = g.append("path").classed('line', true);
   let lineForegroundGroup = g.append("path").classed('foreground line', true);
 
-  // REMOVED global x-axis line:
-  // g.append("line") ...  (gone)
-
   // Brush
   const brush = d3.brushX()
     .extent([[0, height + brushOffset], [width, height + brushOffset + brushHeight]])
@@ -320,24 +323,20 @@ export default function BarChartMagnitude({
     }
   }
 
+  // We keep nFormatter in case you need it, but not specifically requested to use it here.
   function nFormatter(num, digits) {
     const lookup = [
-      { value: 1, symbol: "" },
-      { value: 1e3, symbol: "k" },
-      { value: 1e6, symbol: "M" },
       { value: 1e9, symbol: "G" },
-      { value: 1e12, symbol: "T" },
-      { value: 1e15, symbol: "P" },
-      { value: 1e18, symbol: "E" }
+      { value: 1e6, symbol: "M" },
+      { value: 1e3, symbol: "K" },
+      { value: 1,   symbol: "" }
     ];
-    const regexp = /\.0+$|(?<=\.[0-9]*[1-9])0+$/;
-    const absNum = Math.abs(num);
-    const item = lookup.findLast(item => absNum >= item.value);
-    return item
-      ? (num < 0 ? "-" : "") +
-        (absNum / item.value).toFixed(digits).replace(regexp, "") +
-        item.symbol
-      : "0";
+    for (let i = 0; i < lookup.length; i++) {
+      if (Math.abs(num) >= lookup[i].value) {
+        return (num / lookup[i].value).toFixed(digits) + lookup[i].symbol;
+      }
+    }
+    return "0";
   }
 
   const updateForegroundBar = update => update
@@ -389,7 +388,21 @@ export default function BarChartMagnitude({
     });
   }
 
-  // REMOVED all the "Global" axis creation and usage here
+  // -------------------------------
+  // 1) We define a toggle for short-format vs. raw labels
+  // -------------------------------
+  let useShortFormat = false;
+
+  // We'll create a label to click on:
+  const toggleText = g.append("text")
+    .attr("class", "toggle-label")
+    .attr("x", width - 60) // near the right side
+    .attr("y", -5)        // just above the chart
+    .text("Toggle Format")
+    .on("click", () => {
+      useShortFormat = !useShortFormat;
+      updateCharts();
+    });
 
   function updateCharts() {
     lineGroup.style('display', 'none');
@@ -447,8 +460,10 @@ export default function BarChartMagnitude({
 
     // ---------------------------------------------
     // Sub-chart axes in each prism slice
+    // -- We remove top/right side by .tickSizeOuter(0)
+    // -- We also auto-limit the number of ticks
+    // -- We apply .tickFormat() conditionally if useShortFormat
     // ---------------------------------------------
-    // We create a container group
     const segAxisGroup = g.append("g")
       .attr("class", "seg-scale-axis");
 
@@ -461,32 +476,39 @@ export default function BarChartMagnitude({
 
       const yScaleSub = yScales[i];
 
+      // Simple heuristic to prevent overlapping ticks:
+      const subChartWidth = xMax - xMin;
+      const subChartHeight = height - yForPrismTop;
+      const maxXTicks = Math.max(2, Math.floor(subChartWidth / 50));
+      const maxYTicks = Math.max(2, Math.floor(subChartHeight / 30));
+
+      let xAxis = d3.axisBottom(xScaleSub)
+        .ticks(maxXTicks)
+        .tickSize(-(height - yForPrismTop))
+        .tickSizeOuter(0);
+
+      let yAxis = d3.axisLeft(yScaleSub)
+        .ticks(maxYTicks)
+        .tickSize(-(xMax - xMin))
+        .tickSizeOuter(0);
+
+      // If short format is on, apply nFormatter
+      if (useShortFormat) {
+        xAxis = xAxis.tickFormat(d => nFormatter(d, 1));
+        yAxis = yAxis.tickFormat(d => nFormatter(d, 1));
+      }
+
       // BOTTOM X-AXIS
       segAxisGroup.append("g")
         .attr("class", "x-seg-axis")
         .attr("transform", `translate(0, ${height})`)
-        .call(
-          d3.axisBottom(xScaleSub)
-            // UPDATED: fewer ticks => not so dense
-            .ticks(3)
-            // These grid lines go up to near the prism apex
-            .tickSize(-(height - yForPrismTop))
-        );
+        .call(xAxis);
 
       // LEFT Y-AXIS
       segAxisGroup.append("g")
         .attr("class", "y-seg-axis-left")
         .attr("transform", `translate(${xMin}, 0)`)
-        .call(
-          d3.axisLeft(yScaleSub)
-            // UPDATED: fewer ticks => not so dense
-            .ticks(3)
-            // grid lines across this slice only
-            .tickSize(-(xMax - xMin))
-        );
-
-      // REMOVED the right Y-axis (previously y-seg-axis-right)
-      // REMOVED any top x-axis if it existed (we only have bottom).
+        .call(yAxis);
     }
 
     setBrushSelection();
@@ -530,7 +552,7 @@ export default function BarChartMagnitude({
         `${xBin + rectWidth},${yForPrismTop}`
       );
     }
-    updateCharts(); // re-render everything whenever the prism is dragged
+    updateCharts(); // re-render whenever the prism is dragged
   }
 
   updateCharts();

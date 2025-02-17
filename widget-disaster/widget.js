@@ -26,9 +26,9 @@ export default function BarChartMagnitude({
 
   // Prism geometry constants
   const scaleFactor = 0.666;
-  const rectWidth = 40 * scaleFactor;  // horizontal dimension of the prism top
+  const rectWidth = 40 * scaleFactor;  
   const apexOffsetTop = 10 * scaleFactor;
-  const yForPrismTop = apexOffsetTop;  // y at which prism transitions to apex
+  const yForPrismTop = apexOffsetTop;
 
   // Possibly expand domain if auto
   const minVal = d3.min(data);
@@ -72,10 +72,6 @@ export default function BarChartMagnitude({
       stroke-width: 2;
     }
 
-    .x-axis-line {
-      stroke: black;
-      stroke-width: 1;
-    }
     .tick-line {
       stroke: #333;
       stroke-width: 1;
@@ -130,10 +126,10 @@ export default function BarChartMagnitude({
       fill: rgb(223, 223, 223);
     }
 
-    /* Dashed custom grid lines */
+    /* Dashed custom grid lines: smaller stroke, darker black (#000), dashed */
     .custom-grid-line {
-      stroke: black;
-      stroke-width: 0.5;
+      stroke: #000;        /* pure black */
+      stroke-width: 0.3;   /* smaller stroke */
       shape-rendering: crispEdges;
       pointer-events: none;
       stroke-dasharray: 2,1;  /* dashed style */
@@ -154,21 +150,40 @@ export default function BarChartMagnitude({
       stroke-dasharray: 2,1;
       stroke-width: 0.7;
     }
+
+    /* For the sub-chart axes & ticks */
+    .seg-scale-axis .domain {
+      stroke: #333;
+      stroke-width: 1;
+    }
+    .seg-scale-axis .tick line {
+      stroke: #000;
+      stroke-width: 0.3;
+      stroke-dasharray: 2,1;
+    }
+    .seg-scale-axis text {
+      font: 10px sans-serif;
+      fill: #333;
+    }
+
+    /* Toggle text */
+    .toggle-label {
+      fill: #333;
+      font: 12px sans-serif;
+      cursor: pointer;
+      user-select: none;
+    }
   `;
   document.head.appendChild(style);
 
   const g = svg.append("g")
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
 
-  // --------------------------------------------
-  // 1) A highlight rect for the selected zone
-  //    (same color as brush => orange)
-  // --------------------------------------------
-  // We'll insert it behind the bars, so bars remain visible on top.
+  // Highlight rect for selected zone
   const highlightRect = g.insert("rect", ".barGroup")
     .attr("class", "brush-highlight")
     .attr("fill", "orange")
-    .attr("fill-opacity", 0.3) // partially transparent
+    .attr("fill-opacity", 0.3)
     .attr("y", 0)
     .attr("height", height)
     .style("pointer-events", "none")
@@ -181,32 +196,26 @@ export default function BarChartMagnitude({
     }
     return domains.length - 2;
   }
-
   function getDomain(value) {
     const idx = getDomainIndex(value);
     return [domains[idx], domains[idx + 1]];
   }
-
   function getRange(value) {
     const idx = getDomainIndex(value);
     const offset = idx > 0 ? rectWidth : 0;
     return [xBins[idx] + offset, xBins[idx + 1]];
   }
-
   function chartXPos(value) {
     return d3.scaleLinear()
       .domain(getDomain(value))
       .range(getRange(value))(value);
   }
-
-  // Reverse X => domain
   function getBinIndex(px) {
     for (let i = 1; i < xBins.length - 1; ++i) {
       if (px <= xBins[i] + rectWidth) return i;
     }
     return xBins.length - 1;
   }
-
   function invertChartXPos(px) {
     const idx = getBinIndex(px);
     const offset = idx > 1 ? rectWidth : 0;
@@ -215,7 +224,6 @@ export default function BarChartMagnitude({
       .range([domains[idx - 1], domains[idx]])(px);
   }
 
-  // Binning
   function makeBins(arr) {
     let allBins = [];
     function binRange(start, end, size) {
@@ -240,7 +248,7 @@ export default function BarChartMagnitude({
 
   let bins = makeBins(data);
 
-  // Y scales per segment
+  // Y scales per piecewise domain segment
   let yScales = [];
   function computeYScales() {
     yScales = [];
@@ -258,8 +266,10 @@ export default function BarChartMagnitude({
     }
   }
   computeYScales();
+  function getYScaleForBin(b) {
+    return yScales[getDomainIndex(b.x0)];
+  }
 
-  // Groups
   let barGroup = g.append("g").classed('barGroup', true);
   let foregroundBarGroup = g.append("g").classed('foreground', true);
 
@@ -267,23 +277,10 @@ export default function BarChartMagnitude({
   let lineGroup = g.append("path").classed('line', true);
   let lineForegroundGroup = g.append("path").classed('foreground line', true);
 
-  function getYScaleForBin(b) {
-    return yScales[getDomainIndex(b.x0)];
-  }
-
-  // X axis line
-  g.append("line")
-    .attr("class", "x-axis-line")
-    .attr("x1", 0)
-    .attr("x2", width)
-    .attr("y1", height)
-    .attr("y2", height);
-
   // Brush
   const brush = d3.brushX()
     .extent([[0, height + brushOffset], [width, height + brushOffset + brushHeight]])
     .on("brush end", brushedChart);
-
   const gBrush = g.append("g").attr("class", "brush").call(brush);
 
   function setBrushSelection() {
@@ -292,11 +289,8 @@ export default function BarChartMagnitude({
     const right = chartXPos(brushDomainRight);
     gBrush.call(brush.move, [left, right]);
   }
-
-  // The function that highlights the region (orange rect)
   function highlightSelection(pxLeft, pxRight) {
     if (pxLeft == null || pxRight == null || pxRight <= pxLeft) {
-      // Hide highlight if no valid selection
       highlightRect.style("display", "none");
     } else {
       highlightRect
@@ -305,16 +299,13 @@ export default function BarChartMagnitude({
         .attr("width", pxRight - pxLeft);
     }
   }
-
   function filterTrigger(detail) {
     node.dispatchEvent(new CustomEvent('filter', { detail }));
   }
-
   function brushedChart(event) {
     const s = event.selection;
     if (!s) {
       brushDomainLeft = brushDomainRight = null;
-      // Hide highlight
       highlightRect.style("display", "none");
       if (event.sourceEvent) {
         filterTrigger({});
@@ -326,54 +317,39 @@ export default function BarChartMagnitude({
     const domainRight = invertChartXPos(pxRight);
     brushDomainLeft = domainLeft;
     brushDomainRight = domainRight;
-
-    // Update highlight rect
     highlightSelection(pxLeft, pxRight);
-
     if (event.sourceEvent) {
       filterTrigger({ selection: [domainLeft, domainRight] });
     }
   }
 
-  // Formatter
+  // We keep nFormatter in case you need it, but not specifically requested to use it here.
   function nFormatter(num, digits) {
     const lookup = [
-      { value: 1, symbol: "" },
-      { value: 1e3, symbol: "k" },
-      { value: 1e6, symbol: "M" },
       { value: 1e9, symbol: "G" },
-      { value: 1e12, symbol: "T" },
-      { value: 1e15, symbol: "P" },
-      { value: 1e18, symbol: "E" }
+      { value: 1e6, symbol: "M" },
+      { value: 1e3, symbol: "K" },
+      { value: 1,   symbol: "" }
     ];
-    const regexp = /\.0+$|(?<=\.[0-9]*[1-9])0+$/;
-    const absNum = Math.abs(num);
-    const item = lookup.findLast(item => absNum >= item.value);
-    return item
-      ? (num < 0 ? "-" : "") +
-        (absNum / item.value).toFixed(digits).replace(regexp, "") +
-        item.symbol
-      : "0";
+    for (let i = 0; i < lookup.length; i++) {
+      if (Math.abs(num) >= lookup[i].value) {
+        return (num / lookup[i].value).toFixed(digits) + lookup[i].symbol;
+      }
+    }
+    return "0";
   }
 
-  // Foreground bar update
   const updateForegroundBar = update => update
     .attr("x", d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
     .attr("y", d => getYScaleForBin(d)(d.values.length))
     .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
     .attr("height", d => height - getYScaleForBin(d)(d.values.length));
 
-  // ----------------------------------
-  // Multiple custom grid lines (X & Y)
-  // ----------------------------------
+  // dashed lines via your custom method
   let customGridX = [];
   let customGridY = [];
-
   function drawCustomGridLines() {
-    // Remove old lines
     g.selectAll(".custom-grid-line").remove();
-
-    // 1) Vertical lines
     customGridX.forEach(xVal => {
       const xPos = chartXPos(xVal);
       g.append("line")
@@ -383,16 +359,12 @@ export default function BarChartMagnitude({
         .attr("y1", 0)
         .attr("y2", height);
     });
-
-    // 2) Horizontal lines
     customGridY.forEach(binCount => {
       for (let i = 0; i < yScales.length; i++) {
         const yPos = yScales[i](binCount);
         if (yPos < 0 || yPos > height) continue;
-
         const segmentLeft = xBins[i] + (i > 0 ? rectWidth : 0);
         const segmentRight = xBins[i + 1];
-
         if (yPos >= yForPrismTop) {
           g.append("line")
             .attr("class", "custom-grid-line")
@@ -401,7 +373,6 @@ export default function BarChartMagnitude({
             .attr("y1", yPos)
             .attr("y2", yPos);
         } else {
-          // angled apex region
           const t = yPos / yForPrismTop;
           const apexX = xBins[i] + rectWidth / 2;
           const xLeft = apexX + t * (xBins[i] - apexX);
@@ -417,12 +388,26 @@ export default function BarChartMagnitude({
     });
   }
 
-  // Update all visuals
+  // -------------------------------
+  // 1) We define a toggle for short-format vs. raw labels
+  // -------------------------------
+  let useShortFormat = false;
+
+  // We'll create a label to click on:
+  const toggleText = g.append("text")
+    .attr("class", "toggle-label")
+    .attr("x", width - 60) // near the right side
+    .attr("y", -5)        // just above the chart
+    .text("Toggle Format")
+    .on("click", () => {
+      useShortFormat = !useShortFormat;
+      updateCharts();
+    });
+
   function updateCharts() {
     lineGroup.style('display', 'none');
     barGroup.selectAll(".bar").remove();
 
-    // background bars
     if (type === 'bar') {
       barGroup.selectAll(".bar")
         .data(bins)
@@ -434,7 +419,6 @@ export default function BarChartMagnitude({
         .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
         .attr("height", d => height - getYScaleForBin(d)(d.values.length));
 
-      // foreground bars (filtered)
       foregroundBarGroup.selectAll(".bar")
         .data(filteredBins, d => d.x0)
         .join(
@@ -461,27 +445,6 @@ export default function BarChartMagnitude({
         .x(d => Math.min(chartXPos(d.x0), chartXPos(d.x1)))
         .y(d => getYScaleForBin(d)(d.values.length));
 
-      function domainsToLineTicks() {
-        const arr = [];
-        for (const d of domains) {
-          if (arr.length > 0) {
-            arr.push({ x0: d - 1, x1: d - 1, values: Array(9999) });
-          }
-          arr.push({ x0: d, x1: d, values: Array(9999) });
-        }
-        return arr;
-      }
-
-      // (Uncomment if you want domain boundary ticks)
-      /*
-      lineTicks
-        .datum(domainsToLineTicks())
-        .attr('d', lineGen)
-        .attr('stroke-dasharray', 4)
-        .attr('fill', 'none')
-        .style('display', null);
-      */
-
       lineGroup
         .datum(add_first_last(bins))
         .attr('d', lineGen)
@@ -492,73 +455,63 @@ export default function BarChartMagnitude({
         .attr('d', lineGen);
     }
 
-    // Remove old ticks
+    // Remove old segment axis/ticks
     g.selectAll(".y-tick,.x-tick,.seg-scale-axis").remove();
 
-    // X ticks for domain boundaries
-    const xTickSelection = g.selectAll(".x-tick")
-      .data(domains)
-      .enter()
-      .append("g")
-      .attr("class", "x-tick");
-    xTickSelection.append("line").attr("class", "tick-line");
-    xTickSelection.append("text").attr("class", "tick-label");
-    xTickSelection.each(function(d) {
-      const xPos = chartXPos(d);
-      d3.select(this).select("line")
-        .attr("x1", xPos)
-        .attr("x2", xPos)
-        .attr("y1", height)
-        .attr("y2", height - 8);
-      d3.select(this).select("text")
-        .attr("x", xPos)
-        .attr("y", height + 14)
-        .attr("text-anchor", "middle")
-        .text(nFormatter(d, 1));
-    });
+    // ---------------------------------------------
+    // Sub-chart axes in each prism slice
+    // -- We remove top/right side by .tickSizeOuter(0)
+    // -- We also auto-limit the number of ticks
+    // -- We apply .tickFormat() conditionally if useShortFormat
+    // ---------------------------------------------
+    const segAxisGroup = g.append("g")
+      .attr("class", "seg-scale-axis");
 
-    // Segment axis for each domain segment
-    function drawSegmentAxis(xPos, scale) {
-      const axisGroup = g.append("g").attr("class", "seg-scale-axis");
-      const ticks = scale.ticks(5);
-      axisGroup.selectAll(".seg-y-tick").data(ticks).enter()
-        .append("g")
-        .attr("class", "seg-y-tick")
-        .each(function(d) {
-          const yPos = scale(d);
-          d3.select(this).append("line")
-            .attr("class", "tick-line")
-            .attr("x1", xPos)
-            .attr("x2", xPos - 8)
-            .attr("y1", yPos)
-            .attr("y2", yPos);
-          d3.select(this).append("text")
-            .attr("class", "tick-label")
-            .attr("x", xPos - 10)
-            .attr("y", yPos)
-            .attr("text-anchor", "end")
-            .text(nFormatter(d, 1));
-        });
+    for (let i = 0; i < domains.length - 1; i++) {
+      const xMin = xBins[i] + (i > 0 ? rectWidth : 0);
+      const xMax = xBins[i + 1];
+      const xScaleSub = d3.scaleLinear()
+        .domain([domains[i], domains[i + 1]])
+        .range([xMin, xMax]);
 
-      axisGroup.append("line")
-        .attr("class", "tick-line")
-        .attr("x1", xPos)
-        .attr("x2", xPos)
-        .attr("y1", height)
-        .attr("y2", yForPrismTop)
-        .attr("stroke", "black");
-    }
+      const yScaleSub = yScales[i];
 
-    for (let i = 0; i < yScales.length; i++) {
-      const yScale = yScales[i];
-      if (yScale.domain()[1] > 0) {
-        drawSegmentAxis(xBins[i] + (i > 0 ? rectWidth : 0), yScale);
+      // Simple heuristic to prevent overlapping ticks:
+      const subChartWidth = xMax - xMin;
+      const subChartHeight = height - yForPrismTop;
+      const maxXTicks = Math.max(2, Math.floor(subChartWidth / 50));
+      const maxYTicks = Math.max(2, Math.floor(subChartHeight / 30));
+
+      let xAxis = d3.axisBottom(xScaleSub)
+        .ticks(maxXTicks)
+        .tickSize(-(height - yForPrismTop))
+        .tickSizeOuter(0);
+
+      let yAxis = d3.axisLeft(yScaleSub)
+        .ticks(maxYTicks)
+        .tickSize(-(xMax - xMin))
+        .tickSizeOuter(0);
+
+      // If short format is on, apply nFormatter
+      if (useShortFormat) {
+        xAxis = xAxis.tickFormat(d => nFormatter(d, 1));
+        yAxis = yAxis.tickFormat(d => nFormatter(d, 1));
       }
+
+      // BOTTOM X-AXIS
+      segAxisGroup.append("g")
+        .attr("class", "x-seg-axis")
+        .attr("transform", `translate(0, ${height})`)
+        .call(xAxis);
+
+      // LEFT Y-AXIS
+      segAxisGroup.append("g")
+        .attr("class", "y-seg-axis-left")
+        .attr("transform", `translate(${xMin}, 0)`)
+        .call(yAxis);
     }
 
     setBrushSelection();
-
-    // Finally draw new custom dashed grid lines
     drawCustomGridLines();
   }
 
@@ -576,8 +529,6 @@ export default function BarChartMagnitude({
       );
     return group;
   }
-
-  // Build a prism at each domain boundary (except first & last)
   const prisms = [];
   for (let i = 1; i < xBins.length - 1; i++) {
     const drag = d3.drag()
@@ -590,7 +541,6 @@ export default function BarChartMagnitude({
       });
     prisms[i] = createPrism(xBins[i], yForPrismTop, drag);
   }
-
   function updatePrisms() {
     for (let i = 1; i < xBins.length - 1; i++) {
       const xBin = xBins[i];
@@ -602,7 +552,7 @@ export default function BarChartMagnitude({
         `${xBin + rectWidth},${yForPrismTop}`
       );
     }
-    updateCharts();
+    updateCharts(); // re-render whenever the prism is dragged
   }
 
   updateCharts();
@@ -639,7 +589,6 @@ export default function BarChartMagnitude({
     return node;
   };
 
-  // Existing "customGridLine"
   node.customGridLine = (xVals, yVals) => {
     if (xVals === undefined || xVals === null) {
       customGridX = [];
@@ -648,7 +597,6 @@ export default function BarChartMagnitude({
     } else {
       customGridX = xVals;
     }
-
     if (yVals === undefined || yVals === null) {
       customGridY = [];
     } else if (!Array.isArray(yVals)) {
@@ -656,23 +604,19 @@ export default function BarChartMagnitude({
     } else {
       customGridY = yVals;
     }
-
     updateCharts();
     return node;
   };
 
-  // Existing single "drawHorizontalLine"
   node.drawHorizontalLine = function (binCountValue) {
     g.selectAll(".connected-binCount-line").remove();
     if (binCountValue == null) {
       return node;
     }
-
     const points = [];
     let yPrev = yScales[0](binCountValue);
     points.push([xBins[0], yPrev]);
     points.push([xBins[1], yPrev]);
-
     const N = yScales.length;
     for (let i = 1; i < N; i++) {
       const yThis = yScales[i](binCountValue);
@@ -682,10 +626,8 @@ export default function BarChartMagnitude({
       points.push([xBins[i + 1], yThis]);
       yPrev = yThis;
     }
-
     const lineGen = d3.line().x(d => d[0]).y(d => d[1]);
     const pathData = lineGen(points);
-
     g.append("path")
       .attr("class", "connected-binCount-line")
       .attr("d", pathData)
@@ -693,36 +635,23 @@ export default function BarChartMagnitude({
       .attr("stroke", "black")
       .attr("stroke-dasharray", "2,1")
       .attr("stroke-width", 0.7);
-
     return node;
   };
 
-  // ------------------------------------------------------------
-  // (1) Multiple horizontal lines (with per-line style)
-  // ------------------------------------------------------------
   node.drawMultipleHorizontalLines = function (lines) {
-    // Remove old multi-hline paths
     g.selectAll(".multi-hline").remove();
-
-    // If null or empty => do nothing
     if (!lines || !lines.length) {
       return node;
     }
-
-    // Normalize input: plain number => { value: number }
     const normalized = lines.map(line => {
-      return (typeof line === "number")
-        ? { value: line }
-        : line; // user might pass { value, stroke, dasharray, etc. }
+      return (typeof line === "number") ? { value: line } : line;
     });
-
     normalized.forEach(lineObj => {
       const binCountValue = lineObj.value;
       const points = [];
       let yPrev = yScales[0](binCountValue);
       points.push([xBins[0], yPrev]);
       points.push([xBins[1], yPrev]);
-
       const N = yScales.length;
       for (let i = 1; i < N; i++) {
         const yThis = yScales[i](binCountValue);
@@ -732,63 +661,36 @@ export default function BarChartMagnitude({
         points.push([xBins[i + 1], yThis]);
         yPrev = yThis;
       }
-
-      const lineGen = d3.line()
-        .x(d => d[0])
-        .y(d => d[1]);
-
+      const lineGen = d3.line().x(d => d[0]).y(d => d[1]);
       const pathData = lineGen(points);
-
-      // Create each path
       const path = g.append("path")
         .attr("class", lineObj.class || "multi-hline")
         .attr("d", pathData);
-
-      // Apply optional styles if provided
       if (lineObj.stroke) path.attr("stroke", lineObj.stroke);
       if (lineObj.strokeDasharray) path.attr("stroke-dasharray", lineObj.strokeDasharray);
       if (lineObj.strokeWidth) path.attr("stroke-width", lineObj.strokeWidth);
     });
-
     return node;
   };
 
-  // ------------------------------------------------------------
-  // (2) Vertical lines (with per-line style, fully vertical)
-  // ------------------------------------------------------------
   node.drawVerticalLines = function (lines) {
-    // Remove old vertical lines
     g.selectAll(".vline-prism").remove();
-
-    // If null or empty => do nothing
-    if (!lines || !lines.length) {
-      return node;
-    }
-
-    // Normalize input
+    if (!lines || !lines.length) return node;
     const normalized = lines.map(line => {
-      return (typeof line === "number")
-        ? { value: line }
-        : line;
+      return (typeof line === "number") ? { value: line } : line;
     });
-
     normalized.forEach(lineObj => {
       const xPos = chartXPos(lineObj.value);
-
-      // Create a single vertical line from y=0 to y=height
       const lineElem = g.append("line")
         .attr("class", lineObj.class || "vline-prism")
         .attr("x1", xPos)
         .attr("x2", xPos)
         .attr("y1", 0)
         .attr("y2", height);
-
-      // Apply optional styles
       if (lineObj.stroke) lineElem.attr("stroke", lineObj.stroke);
       if (lineObj.strokeDasharray) lineElem.attr("stroke-dasharray", lineObj.strokeDasharray);
       if (lineObj.strokeWidth) lineElem.attr("stroke-width", lineObj.strokeWidth);
     });
-
     return node;
   };
 

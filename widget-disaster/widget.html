@@ -68,14 +68,6 @@
       //   barChartMagnitude.updateData()
       // }, 400) 
 
-      barChartMagnitude.drawMultipleHorizontalLines([5, 10, 20, 30, 2000]);
-      barChartMagnitude.drawVerticalLines([
-      { value: 100000, stroke: "orange" },
-      { value: 200000, stroke: "orange" },
-      { value: 300000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 400000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 500000, stroke: "black", strokeDasharray: "2,3" },    
-    ]);
 
       document.querySelector('#chart1').append(barChartMagnitude)
     }
@@ -107,14 +99,7 @@
       //   barChartMagnitude.updateData()
       // }, 400) 
 
-      barChartMagnitude.drawMultipleHorizontalLines([5, 100, 500, 1000, 5000]);
-      barChartMagnitude.drawVerticalLines([
-      { value: 1000000, stroke: "orange" },
-      { value: 10000000, stroke: "orange" },
-      { value: 1000000000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 10000000000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 15000000000, stroke: "black", strokeDasharray: "2,3" },    
-    ]);
+   
       document.querySelector('#chart2').append(barChartMagnitude)
     }
     
@@ -146,16 +131,7 @@
       //   barChartMagnitude.updateData()
       // }, 400) 
 
-      barChartMagnitude.drawMultipleHorizontalLines([5, 100, 200, 300, 500, 1000, 3000]);
-      barChartMagnitude.drawVerticalLines([
-      { value: 100, stroke: "orange" },
-      { value: 300, stroke: "orange" },
-      { value: 1000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 10000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 100000, stroke: "black", strokeDasharray: "2,3" },    
-      { value: 1000000, stroke: "black", strokeDasharray: "2,3" },    
-      { value: 3000000, stroke: "black", strokeDasharray: "2,3" },    
-    ]);
+      
       document.querySelector('#chart3').append(barChartMagnitude)
     }
    
@@ -244,13 +220,7 @@
   });
 
   barChartMagnitude.addEventListener('filter', evt => console.log(evt.detail));
-  barChartMagnitude.drawMultipleHorizontalLines([2500, 1000, 500, 300, 100]);
-      barChartMagnitude.drawVerticalLines([
-      { value: 10000, stroke: "orange" },
-      { value: 100000, stroke: "orange" },
-      { value: 500000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 1500000, stroke: "black", strokeDasharray: "1,2" },   
-    ]);
+ 
   document.querySelector('#chart5').append(barChartMagnitude);
 
   // ---- BELOW is the extra code that replaces bars with an area chart ----
@@ -333,15 +303,7 @@
       //   randomSalary.pop()
       //   barChartMagnitude.updateData()
       // }, 400) 
-      barChartMagnitude.drawMultipleHorizontalLines([2000, 1000, 50, 30, 10]);
-      barChartMagnitude.drawVerticalLines([
-      { value: 100000, stroke: "orange" },
-      { value: 500000, stroke: "orange" },
-      { value: 1000000, stroke: "black", strokeDasharray: "1,2" },
-      { value: 2000000, stroke: "black", strokeDasharray: "1,2" },   
-      { value: 4000000, stroke: "black", strokeDasharray: "1,2" },   
-      { value: 6000000, stroke: "black", strokeDasharray: "1,2" },  
-    ]);
+      
       document.querySelector('#chart6').append(barChartMagnitude)
     }
 
