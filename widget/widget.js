@@ -128,11 +128,11 @@ export default function BarChartMagnitude({
 
     /* Dashed custom grid lines: smaller stroke, darker black (#000), dashed */
     .custom-grid-line {
-      stroke: #000;        /* pure black */
-      stroke-width: 0.3;   /* smaller stroke */
+      stroke: #000;
+      stroke-width: 0.3;
       shape-rendering: crispEdges;
       pointer-events: none;
-      stroke-dasharray: 2,1;  /* dashed style */
+      stroke-dasharray: 2,1;
     }
 
     /* For multiple horizontal lines */
@@ -393,12 +393,17 @@ export default function BarChartMagnitude({
   // -------------------------------
   let useShortFormat = false;
 
-  // We'll create a label to click on:
-  const toggleText = g.append("text")
-    .attr("class", "toggle-label")
-    .attr("x", width - 60) // near the right side
-    .attr("y", -5)        // just above the chart
-    .text("Toggle Format")
+  // We'll create a button instead of a text label:
+  const toggleButton = g.append("foreignObject")
+    .attr("x", width - 80) // shift left for a bit more room
+    .attr("y", -22)        // slightly higher so it's clickable
+    .attr("width", 80)
+    .attr("height", 24)
+    .append("xhtml:button")
+    .style("font", "12px sans-serif")
+    .style("cursor", "pointer")
+    .style("user-select", "none")
+    .text("Toggle")
     .on("click", () => {
       useShortFormat = !useShortFormat;
       updateCharts();
@@ -492,10 +497,16 @@ export default function BarChartMagnitude({
         .tickSize(-(xMax - xMin))
         .tickSizeOuter(0);
 
-      // If short format is on, apply nFormatter
+      // If short format is on, apply nFormatter and remove trailing ".0"
       if (useShortFormat) {
-        xAxis = xAxis.tickFormat(d => nFormatter(d, 1));
-        yAxis = yAxis.tickFormat(d => nFormatter(d, 1));
+        xAxis = xAxis.tickFormat(d => {
+          const val = nFormatter(d, 1);
+          return val.replace(/\.0(?=[GMK]|$)/, "");
+        });
+        yAxis = yAxis.tickFormat(d => {
+          const val = nFormatter(d, 1);
+          return val.replace(/\.0(?=[GMK]|$)/, "");
+        });
       }
 
       // BOTTOM X-AXIS
