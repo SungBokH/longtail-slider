@@ -171,6 +171,15 @@ export default function BarChartMagnitude({
       cursor: pointer;
       user-select: none;
     }
+
+    /* Hover zone for sub-chart boundaries */
+    .boundary-hover-zone {
+      fill: transparent;
+      cursor: pointer;
+    }
+    .boundary-hover-zone:hover {
+      fill: rgba(0,255,0,0.03);
+    }
   `;
   document.head.appendChild(style);
 
@@ -178,16 +187,22 @@ export default function BarChartMagnitude({
   const g = svg.append("g")
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
 
-  // Flag that determines whether to show prism offset or not
-  let showPrism = true;
+  // ----------------------------------------------------------------
+  // Instead of a single boolean "showPrism", we have an array of booleans,
+  // boundaryHover[i], which indicates if boundary i is expanded.
+  // We'll do boundaryHover[i] = false by default.
+  // ----------------------------------------------------------------
+  let boundaryHover = new Array(xBins.length).fill(false);
 
-  // If showPrism is false => no offset => chart shrinks
+  // offsetFor(i): If boundaryHover[i] is true => rectWidth, else 0
+  // We'll also keep i>0 check, so the left edge is never offset
   function offsetFor(i) {
-    return (showPrism && i > 0) ? rectWidth : 0;
+    if (i <= 0) return 0;
+    return boundaryHover[i] ? rectWidth : 0;
   }
-  // Also define top boundary for the Y scale
+  // The top boundary is always apexOffsetTop in your existing design
   function topY() {
-    return showPrism ? apexOffsetTop : 0;
+    return apexOffsetTop;
   }
 
   // Domain/scale logic
@@ -220,8 +235,7 @@ export default function BarChartMagnitude({
   }
   function invertChartXPos(px) {
     const idx = getBinIndex(px);
-    const offset = idx > 1 ? rectWidth : 0;
-    const domainLeft = xBins[idx - 1] + (idx > 1 ? offsetFor(idx) : 0);
+    const domainLeft = xBins[idx - 1] + offsetFor(idx);
     const domainRight = xBins[idx];
     return d3.scaleLinear()
       .domain([domainLeft, domainRight])
@@ -263,10 +277,11 @@ export default function BarChartMagnitude({
         b.x0 >= domains[i] && b.x0 < domains[i + 1] + (isLast ? 1 : 0)
       );
       const maxBin = segBin.length > 0 ? d3.max(segBin, d => d.values.length) : 0;
+      // Keep your apex approach
       yScales.push(
         d3.scaleLinear()
           .domain([0, maxBin])
-          .range([height, topY()])
+          .range([height, apexOffsetTop])
       );
     }
   }
@@ -384,7 +399,7 @@ export default function BarChartMagnitude({
         const segmentLeft = xBins[i] + offsetFor(i);
         const segmentRight = xBins[i + 1];
 
-        if (yPos >= topY()) {
+        if (yPos >= apexOffsetTop) {
           g.append("line")
             .attr("class", "custom-grid-line")
             .attr("x1", segmentLeft)
@@ -392,7 +407,8 @@ export default function BarChartMagnitude({
             .attr("y1", yPos)
             .attr("y2", yPos);
         } else {
-          const t = yPos / topY();
+          // apex region
+          const t = yPos / apexOffsetTop;
           const apexX = xBins[i] + rectWidth / 2;
           const xLeft = apexX + t * (xBins[i] - apexX);
           const xRight = apexX + t * ((xBins[i] + rectWidth) - apexX);
@@ -406,14 +422,13 @@ export default function BarChartMagnitude({
       }
     });
 
-    // Make sure lines appear on top
     g.selectAll(".custom-grid-line").raise();
   }
 
-  // Toggle: short-format
+  // Toggle: short-format only
   let useShortFormat = false;
   g.append("foreignObject")
-    .attr("x", width - 160)
+    .attr("x", width - 80) // put it at the right side
     .attr("y", -22)
     .attr("width", 80)
     .attr("height", 24)
@@ -427,81 +442,84 @@ export default function BarChartMagnitude({
       updateCharts();
     });
 
-  // Toggle: prism on/off
-  g.append("foreignObject")
-    .attr("x", width - 80)
-    .attr("y", -22)
-    .attr("width", 80)
-    .attr("height", 24)
-    .append("xhtml:button")
-    .style("font", "12px sans-serif")
-    .style("cursor", "pointer")
-    .style("user-select", "none")
-    .text("Prism")
-    .on("click", () => {
-      showPrism = !showPrism;
-      updatePrismVisibility();
-      computeYScales();
-      updateCharts();
-    });
-
-  // PRISMS
+  // ----------------------------------------------------------------
+  // Create Prisms
+  // Each boundary i has a group with a polygon, initially hidden or shown
+  // We'll define them all but they will only be "activated" if boundaryHover[i]=true
+  // ----------------------------------------------------------------
   const prisms = [];
   for (let i = 1; i < xBins.length - 1; i++) {
     const drag = d3.drag()
       .on("start", function() { d3.select(this).raise(); })
       .on("drag", (event) => {
         let newX = event.x - rectWidth / 2;
-        // Bound to avoid overlap
         newX = Math.max(0, Math.min(xBins[i + 1] - rectWidth - 50, newX));
         xBins[i] = newX;
         updatePrisms();
       });
-    // Create each interior prism
-    prisms[i] = createPrism(xBins[i], drag);
-  }
 
-  // Show/hide all prisms fully
-  function updatePrismVisibility() {
-    // IMPORTANT FIX: loop exactly the same range used to create them
-    for (let i = 1; i < xBins.length - 1; i++) {
-      if (prisms[i]) {
-        prisms[i].style("display", showPrism ? null : "none");
-      }
-    }
-  }
+    const group = g.append("g").call(drag);
 
-  // Helper to create the <g> + <polygon> for each prism
-  function createPrism(x, dragBehavior) {
-    const group = g.append("g").call(dragBehavior);
     group.append("polygon")
       .attr("class", "prism");
-    return group;
+
+    prisms[i] = group;
   }
 
-  // Update the polygon shape
   function updatePrisms() {
     for (let i = 1; i < xBins.length - 1; i++) {
       const xBin = xBins[i];
-      prisms[i].select(".prism").attr("points",
-        `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
-        `${xBin},${apexOffsetTop} ` +
-        `${xBin},${height} ` +
-        `${xBin + rectWidth},${height} ` +
-        `${xBin + rectWidth},${apexOffsetTop}`
-      );
+      prisms[i].select(".prism")
+        .attr("points",
+          `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
+          `${xBin},${apexOffsetTop} ` +
+          `${xBin},${height} ` +
+          `${xBin + rectWidth},${height} ` +
+          `${xBin + rectWidth},${apexOffsetTop}`
+        );
+
+      // If boundaryHover[i], show. Else hide
+      prisms[i].style("display", boundaryHover[i] ? null : "none");
     }
     computeYScales();
     updateCharts();
   }
 
+  // ----------------------------------------------------------------
+  // Hover Zones
+  // We'll create an invisible rectangle around each boundary i. 
+  // On mouseover => boundaryHover[i] = true => expand + show prism
+  // On mouseout => boundaryHover[i] = false => shrink + hide prism
+  // ----------------------------------------------------------------
+  const zoneWidth = 12; // how wide is the hover region
+  for (let i = 1; i < xBins.length - 1; i++) {
+    // We'll place the zone center around xBins[i]. 
+    // We'll do zoneX = xBins[i] - zoneWidth/2
+    const zoneX = xBins[i] - zoneWidth / 2;
+    g.append("rect")
+      .attr("class", "boundary-hover-zone")
+      .attr("x", zoneX)
+      .attr("y", 0)
+      .attr("width", zoneWidth)
+      .attr("height", height)
+      .on("mouseover", () => {
+        boundaryHover[i] = true;
+        updatePrisms();
+      })
+      .on("mouseout", () => {
+        boundaryHover[i] = false;
+        updatePrisms();
+      });
+  }
+
+  // ----------------------------------------------------------------
+  // updateCharts: draws bars/lines + axes
+  // ----------------------------------------------------------------
   function updateCharts() {
-    // Clear old bars
     lineGroup.style('display', 'none');
     barGroup.selectAll(".bar").remove();
 
     if (type === 'bar') {
-      // background bars
       barGroup.selectAll(".bar")
         .data(bins)
         .enter()
@@ -512,7 +530,7 @@ export default function BarChartMagnitude({
         .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
         .attr("height", d => (height - getYScaleForBin(d)(d.values.length)));
 
-      // foreground bars (filtered)
+      // Foreground bars (filtered)
       foregroundBarGroup.selectAll(".bar")
         .data(filteredBins, d => d.x0)
         .join(
@@ -565,7 +583,7 @@ export default function BarChartMagnitude({
     // Remove old segment axis/ticks
     g.selectAll(".y-tick,.x-tick,.seg-scale-axis").remove();
 
-    // For each domain slice, we define sub-axes
+    // For each domain slice, define sub-axes
     const segAxisGroup = g.append("g")
       .attr("class", "seg-scale-axis");
 
@@ -579,7 +597,7 @@ export default function BarChartMagnitude({
       const yScaleSub = yScales[i];
 
       const subChartWidth = xMax - xMin;
-      const subChartHeight = height - topY();
+      const subChartHeight = height - apexOffsetTop;
       const maxXTicks = Math.max(2, Math.floor(subChartWidth / 50));
       const maxYTicks = Math.max(2, Math.floor(subChartHeight / 30));
 
@@ -604,13 +622,11 @@ export default function BarChartMagnitude({
         });
       }
 
-      // BOTTOM X-AXIS
       segAxisGroup.append("g")
         .attr("class", "x-seg-axis")
         .attr("transform", `translate(0, ${height})`)
         .call(xAxis);
 
-      // LEFT Y-AXIS
       segAxisGroup.append("g")
         .attr("class", "y-seg-axis-left")
         .attr("transform", `translate(${xMin}, 0)`)
@@ -621,14 +637,13 @@ export default function BarChartMagnitude({
     drawCustomGridLines();
   }
 
-  // Initial setup
-  updatePrisms();          
-  updateCharts();          
-  updatePrismVisibility(); 
+  // Initial
+  updatePrisms();  // sets up the prism polygons (hidden by default)
+  updateCharts();  // draw bars/lines, axes, brush, etc.
 
-  //---------------------------------------------------
+  // -------------------------------------------------
   // External Crossfilter / API
-  //---------------------------------------------------
+  // -------------------------------------------------
   node.crossfilter = (filteredData) => {
     if (!filteredData) {
       barGroup.classed('background', false);
