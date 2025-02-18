@@ -18,23 +18,6 @@ export default function BarChartMagnitude({
   brushOffset = 20,
   brushHeight = 8
 }) {
-  // A helper to format big numbers into short (K, M, G) or full format.
-  // We'll switch this in/out using `useShortFormat`.
-  function nFormatter(num, digits) {
-    const si = [
-      { value: 1E9, symbol: "G" },
-      { value: 1E6, symbol: "M" },
-      { value: 1E3, symbol: "K" },
-      { value: 1,   symbol: "" }
-    ];
-    for (let i = 0; i < si.length; i++) {
-      if (num >= si[i].value) {
-        return (num / si[i].value).toFixed(digits) + si[i].symbol;
-      }
-    }
-    return num.toString();
-  }
-
   // Copy arrays so we don't mutate original references
   domains = domains.slice();
   xBins = xBins.slice();
@@ -44,7 +27,7 @@ export default function BarChartMagnitude({
 
   // Prism geometry constants
   const scaleFactor = 0.666;
-  const rectWidth = 40 * scaleFactor;
+  const rectWidth = 40 * scaleFactor;  
   const apexOffsetTop = 10 * scaleFactor;
 
   // Possibly expand domain if auto
@@ -141,6 +124,7 @@ export default function BarChartMagnitude({
       fill: rgb(223, 223, 223);
     }
 
+    /* Dashed custom grid lines: smaller stroke, darker black (#000), dashed */
     .custom-grid-line {
       stroke: #000;
       stroke-width: 0.3;
@@ -148,12 +132,16 @@ export default function BarChartMagnitude({
       pointer-events: none;
       stroke-dasharray: 2,1;
     }
+
+    /* For multiple horizontal lines */
     .multi-hline {
       fill: none;
       stroke: red;
       stroke-dasharray: 2,1;
       stroke-width: 0.5;
     }
+
+    /* For vertical lines */
     .vline-prism {
       fill: none;
       stroke: black;
@@ -161,6 +149,7 @@ export default function BarChartMagnitude({
       stroke-width: 0.7;
     }
 
+    /* For the sub-chart axes & ticks */
     .seg-scale-axis .domain {
       stroke: #333;
       stroke-width: 1;
@@ -175,19 +164,12 @@ export default function BarChartMagnitude({
       fill: #333;
     }
 
+    /* Toggle text */
     .toggle-label {
       fill: #333;
       font: 12px sans-serif;
       cursor: pointer;
       user-select: none;
-    }
-
-    .boundary-hover-zone {
-      fill: transparent;
-      cursor: pointer;
-    }
-    .boundary-hover-zone:hover {
-      fill: rgba(0,255,0,0.03);
     }
   `;
   document.head.appendChild(style);
@@ -196,40 +178,19 @@ export default function BarChartMagnitude({
   const g = svg.append("g")
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
 
-  // -------------------------------------------------------------------------------------
-  // 1) A global boolean that determines default “shrink” or “install” mode
-  // -------------------------------------------------------------------------------------
-  let shrinkByDefault = true; // If true => prism boundaries are collapsed by default
+  // Flag that determines whether to show prism offset or not
+  let showPrism = true;
 
-  // We define boundaryHover[i] => whether boundary i is offset & prism is shown
-  let boundaryHover = new Array(xBins.length).fill(false);
-
-  // This function applies the chosen mode to all boundaries,
-  // sets boundaryHover accordingly, re-renders
-  function applyMode() {
-    // If we’re “shrunk,” everything is collapsed => false
-    // If we’re “installed,” everything is expanded => true
-    const newVal = !shrinkByDefault;
-    for (let i = 1; i < xBins.length - 1; i++) {
-      boundaryHover[i] = newVal;
-    }
-    updatePrisms();
-  }
-
-  // offsetFor(i) => rectWidth if boundaryHover[i] is true, else 0
+  // If showPrism is false => no offset => chart shrinks
   function offsetFor(i) {
-    if (i <= 0) return 0;
-    return boundaryHover[i] ? rectWidth : 0;
+    return (showPrism && i > 0) ? rectWidth : 0;
   }
-
-  // The top boundary is apexOffsetTop in your design
+  // Also define top boundary for the Y scale
   function topY() {
-    return apexOffsetTop;
+    return showPrism ? apexOffsetTop : 0;
   }
 
-  // -------------------------------------------------------------------------------------
   // Domain/scale logic
-  // -------------------------------------------------------------------------------------
   function getDomainIndex(value) {
     for (let i = 0; i < domains.length - 1; ++i) {
       if (value >= domains[i] && value < domains[i + 1]) return i;
@@ -251,20 +212,23 @@ export default function BarChartMagnitude({
   }
   function getBinIndex(px) {
     for (let i = 1; i < xBins.length - 1; ++i) {
-      if (px <= xBins[i] + rectWidth) return i;
+      if (px <= xBins[i] + rectWidth) {
+        return i;
+      }
     }
     return xBins.length - 1;
   }
   function invertChartXPos(px) {
     const idx = getBinIndex(px);
-    const domainLeft = xBins[idx - 1] + offsetFor(idx);
+    const offset = idx > 1 ? rectWidth : 0;
+    const domainLeft = xBins[idx - 1] + (idx > 1 ? offsetFor(idx) : 0);
     const domainRight = xBins[idx];
     return d3.scaleLinear()
       .domain([domainLeft, domainRight])
       .range([domains[idx - 1], domains[idx]])(px);
   }
 
-  // Build the bins array
+  // Create bins
   function makeBins(arr) {
     const allBins = [];
     function binRange(start, end, size) {
@@ -286,9 +250,10 @@ export default function BarChartMagnitude({
     }
     return allBins.filter(b => b.values.length > 0);
   }
+
   let bins = makeBins(data);
 
-  // Y scales per domain segment
+  // Y scales per piecewise domain segment
   let yScales = [];
   function computeYScales() {
     yScales = [];
@@ -301,7 +266,7 @@ export default function BarChartMagnitude({
       yScales.push(
         d3.scaleLinear()
           .domain([0, maxBin])
-          .range([height, apexOffsetTop])
+          .range([height, topY()])
       );
     }
   }
@@ -310,9 +275,7 @@ export default function BarChartMagnitude({
     return yScales[getDomainIndex(b.x0)];
   }
 
-  // -------------------------------------------------------------------------------------
   // Groups for bars/lines
-  // -------------------------------------------------------------------------------------
   const barGroup = g.append("g").classed('barGroup', true);
   const foregroundBarGroup = g.append("g").classed('foreground', true);
 
@@ -320,9 +283,7 @@ export default function BarChartMagnitude({
   const lineGroup = g.append("path").classed('line', true);
   const lineForegroundGroup = g.append("path").classed('foreground line', true);
 
-  // -------------------------------------------------------------------------------------
-  // Brush & highlight
-  // -------------------------------------------------------------------------------------
+  // Brush and highlightRect
   let brushDomainLeft = null;
   let brushDomainRight = null;
 
@@ -341,24 +302,12 @@ export default function BarChartMagnitude({
     .style("pointer-events", "none")
     .style("display", "none");
 
-  // Force an update of the brush selection & the highlight rectangle
   function setBrushSelection() {
-    if (brushDomainLeft == null || brushDomainRight == null) {
-      // If no selection, hide highlightRect
-      highlightRect.style("display", "none");
-      return;
-    }
+    if (brushDomainLeft == null || brushDomainRight == null) return;
     const left = chartXPos(brushDomainLeft);
     const right = chartXPos(brushDomainRight);
-
-    // Call the brush to set the selection in the bottom region
     gBrush.call(brush.move, [left, right]);
-
-    // Also directly update the highlightRect in case the brush event doesn't re-fire
-    highlightSelection(left, right);
   }
-
-  // Show/hide the highlight rectangle on the main chart
   function highlightSelection(pxLeft, pxRight) {
     if (pxLeft == null || pxRight == null || pxRight <= pxLeft) {
       highlightRect.style("display", "none");
@@ -369,13 +318,9 @@ export default function BarChartMagnitude({
         .attr("width", pxRight - pxLeft);
     }
   }
-
-  // Dispatch a “filter” event
   function filterTrigger(detail) {
     node.dispatchEvent(new CustomEvent('filter', { detail }));
   }
-
-  // On brushing, track domain extents & highlight
   function brushedChart(event) {
     const s = event.selection;
     if (!s) {
@@ -396,9 +341,23 @@ export default function BarChartMagnitude({
     }
   }
 
-  // -------------------------------------------------------------------------------------
+  // Number formatting
+  function nFormatter(num, digits) {
+    const lookup = [
+      { value: 1e9, symbol: "G" },
+      { value: 1e6, symbol: "M" },
+      { value: 1e3, symbol: "K" },
+      { value: 1,   symbol: "" }
+    ];
+    for (let i = 0; i < lookup.length; i++) {
+      if (Math.abs(num) >= lookup[i].value) {
+        return (num / lookup[i].value).toFixed(digits) + lookup[i].symbol;
+      }
+    }
+    return "0";
+  }
+
   // Grid lines
-  // -------------------------------------------------------------------------------------
   let customGridX = [];
   let customGridY = [];
 
@@ -425,7 +384,7 @@ export default function BarChartMagnitude({
         const segmentLeft = xBins[i] + offsetFor(i);
         const segmentRight = xBins[i + 1];
 
-        if (yPos >= apexOffsetTop) {
+        if (yPos >= topY()) {
           g.append("line")
             .attr("class", "custom-grid-line")
             .attr("x1", segmentLeft)
@@ -433,7 +392,7 @@ export default function BarChartMagnitude({
             .attr("y1", yPos)
             .attr("y2", yPos);
         } else {
-          const t = yPos / apexOffsetTop;
+          const t = yPos / topY();
           const apexX = xBins[i] + rectWidth / 2;
           const xLeft = apexX + t * (xBins[i] - apexX);
           const xRight = apexX + t * ((xBins[i] + rectWidth) - apexX);
@@ -447,17 +406,16 @@ export default function BarChartMagnitude({
       }
     });
 
+    // Make sure lines appear on top
     g.selectAll(".custom-grid-line").raise();
   }
 
-  // -------------------------------------------------------------------------------------
-  // 2) Toggle #1: short‐format label
-  // -------------------------------------------------------------------------------------
+  // Toggle: short-format
   let useShortFormat = false;
   g.append("foreignObject")
     .attr("x", width - 160)
     .attr("y", -22)
-    .attr("width", 70)
+    .attr("width", 80)
     .attr("height", 24)
     .append("xhtml:button")
     .style("font", "12px sans-serif")
@@ -469,29 +427,25 @@ export default function BarChartMagnitude({
       updateCharts();
     });
 
-  // -------------------------------------------------------------------------------------
-  // 3) Toggle #2: "Hover Prism" vs. "Install Prism"
-  // -------------------------------------------------------------------------------------
-  const prismModeButton = g.append("foreignObject")
+  // Toggle: prism on/off
+  g.append("foreignObject")
     .attr("x", width - 80)
     .attr("y", -22)
-    .attr("width", 70)
+    .attr("width", 80)
     .attr("height", 24)
     .append("xhtml:button")
     .style("font", "12px sans-serif")
     .style("cursor", "pointer")
     .style("user-select", "none")
-    .text(shrinkByDefault ? "Hover Prism" : "Install Prism")
+    .text("Prism")
     .on("click", () => {
-      shrinkByDefault = !shrinkByDefault;
-      prismModeButton.text(shrinkByDefault ? "Hover Prism" : "Install Prism");
-      applyMode();
+      showPrism = !showPrism;
+      updatePrismVisibility();
+      computeYScales();
+      updateCharts();
     });
 
-  // -------------------------------------------------------------------------------------
-  // Create Prisms
-  // We'll store them in an array, each boundary has a group with a polygon
-  // -------------------------------------------------------------------------------------
+  // PRISMS
   const prisms = [];
   for (let i = 1; i < xBins.length - 1; i++) {
     const drag = d3.drag()
@@ -503,65 +457,51 @@ export default function BarChartMagnitude({
         xBins[i] = newX;
         updatePrisms();
       });
-
-    const group = g.append("g").call(drag);
-    group.append("polygon").attr("class", "prism");
-    prisms[i] = group;
+    // Create each interior prism
+    prisms[i] = createPrism(xBins[i], drag);
   }
 
+  // Show/hide all prisms fully
+  function updatePrismVisibility() {
+    // IMPORTANT FIX: loop exactly the same range used to create them
+    for (let i = 1; i < xBins.length - 1; i++) {
+      if (prisms[i]) {
+        prisms[i].style("display", showPrism ? null : "none");
+      }
+    }
+  }
+
+  // Helper to create the <g> + <polygon> for each prism
+  function createPrism(x, dragBehavior) {
+    const group = g.append("g").call(dragBehavior);
+    group.append("polygon")
+      .attr("class", "prism");
+    return group;
+  }
+
+  // Update the polygon shape
   function updatePrisms() {
     for (let i = 1; i < xBins.length - 1; i++) {
       const xBin = xBins[i];
-      prisms[i].select(".prism")
-        .attr("points",
-          `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
-          `${xBin},${apexOffsetTop} ` +
-          `${xBin},${height} ` +
-          `${xBin + rectWidth},${height} ` +
-          `${xBin + rectWidth},${apexOffsetTop}`
-        );
-
-      // boundaryHover[i] => if we show or hide this prism
-      prisms[i].style("display", boundaryHover[i] ? null : "none");
+      prisms[i].select(".prism").attr("points",
+        `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
+        `${xBin},${apexOffsetTop} ` +
+        `${xBin},${height} ` +
+        `${xBin + rectWidth},${height} ` +
+        `${xBin + rectWidth},${apexOffsetTop}`
+      );
     }
     computeYScales();
     updateCharts();
   }
 
-  // -------------------------------------------------------------------------------------
-  // Hover Zones: On mouseover/mouseout => only do anything if shrinkByDefault
-  // -------------------------------------------------------------------------------------
-  const zoneWidth = 12;
-  for (let i = 1; i < xBins.length - 1; i++) {
-    const zoneX = xBins[i] - zoneWidth / 2;
-    g.append("rect")
-      .attr("class", "boundary-hover-zone")
-      .attr("x", zoneX)
-      .attr("y", 0)
-      .attr("width", zoneWidth)
-      .attr("height", height)
-      .on("mouseover", () => {
-        if (shrinkByDefault) {
-          boundaryHover[i] = true;
-          updatePrisms();
-        }
-      })
-      .on("mouseout", () => {
-        if (shrinkByDefault) {
-          boundaryHover[i] = false;
-          updatePrisms();
-        }
-      });
-  }
-
-  // -------------------------------------------------------------------------------------
-  // updateCharts: draws bars/lines + axes
-  // -------------------------------------------------------------------------------------
   function updateCharts() {
+    // Clear old bars
     lineGroup.style('display', 'none');
     barGroup.selectAll(".bar").remove();
 
     if (type === 'bar') {
+      // background bars
       barGroup.selectAll(".bar")
         .data(bins)
         .enter()
@@ -572,7 +512,7 @@ export default function BarChartMagnitude({
         .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
         .attr("height", d => (height - getYScaleForBin(d)(d.values.length)));
 
-      // Foreground bars (filtered)
+      // foreground bars (filtered)
       foregroundBarGroup.selectAll(".bar")
         .data(filteredBins, d => d.x0)
         .join(
@@ -625,7 +565,7 @@ export default function BarChartMagnitude({
     // Remove old segment axis/ticks
     g.selectAll(".y-tick,.x-tick,.seg-scale-axis").remove();
 
-    // For each domain slice, define sub-axes
+    // For each domain slice, we define sub-axes
     const segAxisGroup = g.append("g")
       .attr("class", "seg-scale-axis");
 
@@ -639,7 +579,7 @@ export default function BarChartMagnitude({
       const yScaleSub = yScales[i];
 
       const subChartWidth = xMax - xMin;
-      const subChartHeight = height - apexOffsetTop;
+      const subChartHeight = height - topY();
       const maxXTicks = Math.max(2, Math.floor(subChartWidth / 50));
       const maxYTicks = Math.max(2, Math.floor(subChartHeight / 30));
 
@@ -653,7 +593,6 @@ export default function BarChartMagnitude({
         .tickSize(-subChartWidth)
         .tickSizeOuter(0);
 
-      // If short format is on, apply the nFormatter for xAxis/yAxis
       if (useShortFormat) {
         xAxis = xAxis.tickFormat(d => {
           const val = nFormatter(d, 1);
@@ -663,42 +602,33 @@ export default function BarChartMagnitude({
           const val = nFormatter(d, 1);
           return val.replace(/\.0(?=[GMK]|$)/, "");
         });
-      } else {
-        // Full format with thousands separators
-        xAxis = xAxis.tickFormat(d3.format(","));
-        yAxis = yAxis.tickFormat(d3.format(","));
       }
 
-      // BOTTOM X‐AXIS
+      // BOTTOM X-AXIS
       segAxisGroup.append("g")
         .attr("class", "x-seg-axis")
         .attr("transform", `translate(0, ${height})`)
         .call(xAxis);
 
-      // LEFT Y‐AXIS
+      // LEFT Y-AXIS
       segAxisGroup.append("g")
         .attr("class", "y-seg-axis-left")
         .attr("transform", `translate(${xMin}, 0)`)
         .call(yAxis);
     }
 
-    // Re-apply brush selection in case boundaries changed (so the highlightRect is consistent)
     setBrushSelection();
-
     drawCustomGridLines();
   }
 
-  // -------------------------------------------------------------------------------------
-  // INITIAL: We start in "shrinkByDefault = true" => all boundaries collapsed
-  // -------------------------------------------------------------------------------------
-  applyMode(); // sets boundaryHover[] = false => collapsed
-  // updateCharts is called inside updatePrisms => which is inside applyMode
-  // But let's ensure we call it once more for any needed final pass:
-  updateCharts();
+  // Initial setup
+  updatePrisms();          
+  updateCharts();          
+  updatePrismVisibility(); 
 
-  // -------------------------------------------------
+  //---------------------------------------------------
   // External Crossfilter / API
-  // -------------------------------------------------
+  //---------------------------------------------------
   node.crossfilter = (filteredData) => {
     if (!filteredData) {
       barGroup.classed('background', false);
@@ -749,9 +679,7 @@ export default function BarChartMagnitude({
 
   node.drawHorizontalLine = function (binCountValue) {
     g.selectAll(".connected-binCount-line").remove();
-    if (binCountValue == null) {
-      return node;
-    }
+    if (binCountValue == null) return node;
     const points = [];
     let yPrev = yScales[0](binCountValue);
     points.push([xBins[0], yPrev]);
@@ -779,9 +707,7 @@ export default function BarChartMagnitude({
 
   node.drawMultipleHorizontalLines = function (lines) {
     g.selectAll(".multi-hline").remove();
-    if (!lines || !lines.length) {
-      return node;
-    }
+    if (!lines || !lines.length) return node;
     const normalized = lines.map(line => {
       return (typeof line === "number") ? { value: line } : line;
     });
@@ -791,8 +717,7 @@ export default function BarChartMagnitude({
       let yPrev = yScales[0](binCountValue);
       points.push([xBins[0], yPrev]);
       points.push([xBins[1], yPrev]);
-      const N = yScales.length;
-      for (let i = 1; i < N; i++) {
+      for (let i = 1; i < yScales.length; i++) {
         const yThis = yScales[i](binCountValue);
         points.push([xBins[i], yPrev]);
         points.push([xBins[i] + rectWidth, yThis]);
