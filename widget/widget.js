@@ -179,15 +179,18 @@ export default function BarChartMagnitude({
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
 
   // Flag that determines whether to show prism offset or not
-  let showPrism = true;
+  let showPrism = true
+  let newPrism = true
 
   // If showPrism is false => no offset => chart shrinks
   function offsetFor(i) {
-    return (showPrism && i > 0) ? rectWidth : 0;
+    return ((showPrism && !newPrism) && i > 0) ? rectWidth : 0;
   }
   // Also define top boundary for the Y scale
   function topY() {
-    return showPrism ? apexOffsetTop : 0;
+    if (newPrism) return 0
+    return apexOffsetTop
+    // return showPrism ? apexOffsetTop : 0;
   }
 
   // Domain/scale logic
@@ -204,6 +207,13 @@ export default function BarChartMagnitude({
   function getRange(value) {
     const idx = getDomainIndex(value);
     return [xBins[idx] + offsetFor(idx), xBins[idx + 1]];
+  }
+  function insidePrism(value) {
+    const idx = getDomainIndex(value);
+    if (idx >= domains.length - 2) return false
+    let prismPos = chartXPos(domains[idx + 1])
+    let pos = chartXPos(value)
+    return pos >= prismPos - rectWidth && pos <= prismPos;
   }
   function chartXPos(value) {
     return d3.scaleLinear()
@@ -272,6 +282,22 @@ export default function BarChartMagnitude({
   }
   computeYScales();
   function getYScaleForBin(b) {
+
+    if (showPrism && newPrism && insidePrism(b.x0)) {
+      const domainIdx = getDomainIndex(b.x0)
+
+      // get position inside the prism as [0;1]
+      const prismPos = chartXPos(domains[domainIdx+1])
+      const prismT = d3.scaleLinear()
+        .domain([prismPos-rectWidth, prismPos])
+        .range([0, 1])(chartXPos(b.x0))
+
+      // linear interpolation between yScales inside the prism
+      return (v) =>
+        (1 - prismT) * yScales[domainIdx](v)
+        + prismT * yScales[domainIdx+1](v)
+    }
+
     return yScales[getDomainIndex(b.x0)];
   }
 
@@ -452,6 +478,11 @@ export default function BarChartMagnitude({
       .on("start", function() { d3.select(this).raise(); })
       .on("drag", (event) => {
         let newX = event.x - rectWidth / 2;
+
+        if (showPrism && newPrism) {
+          newX += rectWidth;
+        }
+
         // Bound to avoid overlap
         newX = Math.max(0, Math.min(xBins[i + 1] - rectWidth - 50, newX));
         xBins[i] = newX;
@@ -482,12 +513,17 @@ export default function BarChartMagnitude({
   // Update the polygon shape
   function updatePrisms() {
     for (let i = 1; i < xBins.length - 1; i++) {
-      const xBin = xBins[i];
+      let xBin = xBins[i];
+
+      if (showPrism && newPrism) {
+        xBin = xBin - rectWidth;
+      }
+
       prisms[i].select(".prism").attr("points",
-        `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
+        // `${(xBin + rectWidth / 2)},${apexOffsetTop - apexOffsetTop} ` +
         `${xBin},${apexOffsetTop} ` +
         `${xBin},${height} ` +
-        `${xBin + rectWidth},${height} ` +
+        `${xBin + rectWidth},${height + apexOffsetTop*2} ` +
         `${xBin + rectWidth},${apexOffsetTop}`
       );
     }
@@ -622,9 +658,9 @@ export default function BarChartMagnitude({
   }
 
   // Initial setup
-  updatePrisms();          
-  updateCharts();          
-  updatePrismVisibility(); 
+  updatePrisms();
+  updateCharts();
+  updatePrismVisibility();
 
   //---------------------------------------------------
   // External Crossfilter / API
