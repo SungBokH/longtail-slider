@@ -190,6 +190,18 @@ export default function BarChartMagnitude({
     .boundary-hover-zone:hover {
       fill: rgba(0,255,0,0.03);
     }
+    
+    .y-seg-axis-prism {
+      text, .domain {
+        display: none;
+      }
+      
+      line {
+        stroke: #58626f;
+        stroke-width: 0.3;
+        stroke-dasharray: 2,1;
+      }
+    }
   `;
   document.head.appendChild(style);
 
@@ -213,7 +225,7 @@ export default function BarChartMagnitude({
   // -------------------------------------------------------------------------------------
   // 1) A global boolean that determines default “shrink” or “install” mode
   // -------------------------------------------------------------------------------------
-  let shrinkByDefault = true; // If true => prism boundaries are collapsed by default
+  let shrinkByDefault = false; // If true => prism boundaries are collapsed by default
 
   let newPrism = true
 
@@ -714,20 +726,19 @@ export default function BarChartMagnitude({
     const segAxisGroup = g.append("g")
       .attr("class", "seg-scale-axis");
 
+
+    //
+
+
+    console.log('TODO add axis in-between for prism...')
     for (let i = 0; i < domains.length - 1; i++) {
-
-      // TODO add axis in-between for prism...
-      // if (newPrism && boundaryHover[domainIdx+1]) {
-      //
-      // }
-
       const xMin = xBins[i] + offsetFor(i);
       const xMax = xBins[i + 1];
       const xScaleSub = d3.scaleLinear()
         .domain([domains[i], domains[i + 1]])
         .range([xMin, xMax]);
 
-      const yScaleSub = yScales[i]; // getYScaleForBin(i)
+      const yScaleSub = yScales[i];
 
       const subChartWidth = xMax - xMin;
       const subChartHeight = height - topY();
@@ -739,9 +750,14 @@ export default function BarChartMagnitude({
         .tickSize(-subChartHeight)
         .tickSizeOuter(0);
 
+      let offset = 0
+      if (newPrism && boundaryHover[i+1]) {
+        offset = rectWidth
+      }
+
       let yAxis = d3.axisLeft(yScaleSub)
         .ticks(maxYTicks)
-        .tickSize(-subChartWidth)
+        .tickSize(-subChartWidth+offset)
         .tickSizeOuter(0);
 
       // If short format is on, apply the nFormatter for xAxis/yAxis
@@ -773,6 +789,26 @@ export default function BarChartMagnitude({
         .attr("transform", `translate(${xMin}, 0)`)
         .style('pointer-events', 'none')
         .call(yAxis);
+
+      if (newPrism && boundaryHover[i+1]) {
+        // TODO for each tick line, add a line from the yScales[i] to yScales[i+1] inside the prism
+        console.log(yScales[i].ticks(6))
+
+        const nTicks = segAxisGroup.selectAll(".tick").nodes().length
+
+        segAxisGroup.append("g")
+        .attr("class", "y-seg-axis-prism")
+        .attr("transform", `translate(${xMax-rectWidth}, 0)`)
+        .style('pointer-events', 'none')
+        .selectAll('line')
+        .data(yScales[i].ticks(6).concat(yScales[i+1].ticks(6)))
+        .enter()
+        .append("line")
+        .attr('x2', rectWidth)
+        .attr('y1', d => yScales[i](d))
+        .attr('y2', d => Math.max(yScales[i+1](d)))
+        // .call(yAxisPrism);
+      }
     }
 
     // Re-apply brush selection in case boundaries changed (so the highlightRect is consistent)
