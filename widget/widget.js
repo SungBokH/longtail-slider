@@ -50,7 +50,7 @@ export default function BarChartMagnitude({
   // Possibly expand domain if auto
   const minVal = d3.min(data);
   const maxVal = d3.max(data);
-  if (domainAuto.min && !domains.includes(minVal) && minVal < domains[0]) {
+  if (domainAuto.min && !domains.includes(minVal) && (domains.length <= 0 || minVal < domains[0])) {
     domains.unshift(minVal);
   }
   if (domainAuto.max && !domains.includes(maxVal) && maxVal > domains[domains.length - 1]) {
@@ -216,16 +216,70 @@ export default function BarChartMagnitude({
     .attr("height", height + marginBottom)
 
   // Container <g> for margin
-  const g = svg.append("g")
+  const mainG = svg.append("g")
     .attr("transform", `translate(${marginLeft}, ${marginTop})`)
     // .attr('clip-path', 'url(#clipPlot)');
-
+  const g = mainG.append("g").classed('main-g', true)
   const content = g.append("g").attr('clip-path', 'url(#clipPlot)');
+
+  // -----------------------------------------------------------
+
+  const hoverXAxis = mainG.append('g').classed('hover-x-axis-g', true)
+  let hoverXAxisText = hoverXAxis
+    .append('text')
+    .attr('y', height - 5)
+  let hoverXAxisQuantileText = hoverXAxis
+    .append('text')
+    .attr('font-family', 'sans-serif')
+    .style('font-size', '8px')
+    .attr('y', height + marginBottom*.7)
+  const hoverXAxisIcon = hoverXAxis
+    .append('text')
+    .text('✂')
+    .attr('transform', `translate(${-marginLeft/2},${height+5})rotate(-90)`)
+  hoverXAxis.append('rect')
+    .attr('class', 'hover-x-axis')
+    .attr('x', 0)
+    .attr('y', height)
+    .attr('width', width)
+    .attr('height', rectWidth/2)
+    .attr('fill', 'transparent')
+    // .attr('fill-opacity', .5)
+    .on('mousemove', function(evt) {
+      // TODO display value + quantile + cut icon
+      const [x,y] = d3.pointer(evt)
+      const xPos = invertChartXPos(x)
+      const quantile = (xPos - minVal) / (maxVal - minVal) // TODO
+      hoverXAxisText
+        .attr('x', x - 15)
+        .text(nFormatter(xPos,1));
+      hoverXAxisQuantileText
+        .attr('x', x - 15)
+        .text(nFormatter(quantile,2)+'%');
+      hoverXAxisIcon
+        // .attr('x', x - 15)
+        .attr('transform', `translate(${x+5},${height+5})rotate(-90)`)
+        // .style('display', null)
+    })
+    .on('click', (evt) => {
+      const [x,y] = d3.pointer(evt)
+      const xPos = invertChartXPos(x)
+      const quantile = (xPos - minVal) / (maxVal - minVal)
+      node.split(xPos, quantile)
+    })
+    .on('mouseout', () => {
+      hoverXAxisText.text(null)
+      hoverXAxisQuantileText.text(null)
+      hoverXAxisIcon
+      .transition()
+        .attr('transform', `translate(${-marginLeft/2},${height+5})rotate(-90)`)
+        // .style('display', 'none')
+    })
 
   // -------------------------------------------------------------------------------------
   // 1) A global boolean that determines default “shrink” or “install” mode
   // -------------------------------------------------------------------------------------
-  let shrinkByDefault = false; // If true => prism boundaries are collapsed by default
+  let shrinkByDefault = true; // If true => prism boundaries are collapsed by default
 
   let newPrism = true
 
@@ -288,7 +342,7 @@ export default function BarChartMagnitude({
   }
   function getBinIndex(px) {
     for (let i = 1; i < xBins.length - 1; ++i) {
-      if (px <= xBins[i] + rectWidth) return i;
+      if (px <= xBins[i] + /*rectWidth*/offsetFor(i)) return i;
     }
     return xBins.length - 1;
   }
@@ -507,7 +561,7 @@ export default function BarChartMagnitude({
   // -------------------------------------------------------------------------------------
   // 2) Toggle #1: short‐format label
   // -------------------------------------------------------------------------------------
-  let useShortFormat = false;
+  let useShortFormat = true;
   svg.append("foreignObject")
     .attr("x", width - 160)
     // .attr("y", -22)
@@ -547,12 +601,15 @@ export default function BarChartMagnitude({
   // We'll store them in an array, each boundary has a group with a polygon
   // -------------------------------------------------------------------------------------
   const prisms = [];
-  for (let i = 1; i < xBins.length - 1; i++) {
-    const drag = d3.drag()
-      .on("start", function() {
+  function computePrisms() {
+    prisms.length = 0
+    g.selectAll('.prisms').remove()
+    for (let i = 1; i < xBins.length - 1; i++) {
+      const drag = d3.drag()
+      .on("start", function () {
         d3.select(this)
-          .classed('dragged', true)
-          .raise()
+        .classed('dragged', true)
+        .raise()
       })
       .on("drag", (event) => {
         let newX = event.x - rectWidth / 2;
@@ -566,14 +623,63 @@ export default function BarChartMagnitude({
         xBins[i] = newX;
         updatePrisms();
       })
-      .on("end", function() {
+      .on("end", function () {
         d3.select(this)
-          .classed('dragged', false)
+        .classed('dragged', false)
       })
 
-    const group = g.append("g").call(drag);
-    group.append("polygon").attr("class", "prism");
-    prisms[i] = group;
+      const group = g.append("g").attr("class", "prisms").call(drag);
+      group.append("polygon").attr("class", "prism");
+      prisms[i] = group;
+    }
+  }
+  computePrisms();
+
+  function recompute() {
+    // xBins.push(width)
+    for (let i = 1; i < xBins.length - 1; ++i) {
+      xBins[i] = i*(width/(xBins.length-1))
+    }
+    console.log(xBins)
+
+    // Add value to binSize and recompute
+    // binSize.push(0)
+    for (let i = 0; i < binSize.length; ++i) {
+      binSize[i] = (domains[i+1] - domains[i]) / 50
+    }
+    console.log(binSize)
+
+    bins = makeBins(data);
+
+    computePrisms()
+    computeYScales();
+    computeHoverZones()
+
+    boundaryHover = new Array(xBins.length).fill(false);
+
+
+    updateCharts();
+    applyMode()
+  }
+
+  function addPrism(x) {
+    const index = domains.findIndex(d => d >= x)
+    domains.splice(index, 0, x)
+
+    xBins.push(width)
+    binSize.push(0)
+
+    recompute()
+  }
+
+  function removePrism(i) {
+    domains.splice(i, 1)
+    console.log(domains)
+
+    xBins.splice(i, 1)
+    binSize.splice(i-1, 1)
+
+    recompute()
   }
 
   let timeouts = []
@@ -597,15 +703,26 @@ export default function BarChartMagnitude({
           //   clearTimeout(timeouts[i])
           //   delete timeouts[i]
           // }
-      })
-      .on("mouseout", function() {
-        const currentlyDragged = false//d3.select(this).select(function() { return this.parentNode; }).node().classList.contains("dragged")
+        })
+        .on("mouseout", function() {
+          const currentlyDragged = false//d3.select(this).select(function() { return this.parentNode; }).node().classList.contains("dragged")
           if (shrinkByDefault && !currentlyDragged) {
               boundaryHover[i] = false;
               g.selectAll(`.boundary-hover-zone`).style('display', null)
               updatePrisms();
             }
-        });
+        })
+        .on('mousedown', (evt) => {
+          // right click
+          if (evt.which == 3 || evt.button == 2) {
+
+            console.log(domains, i)
+            removePrism(i)
+
+            evt.preventDefault();
+            return false
+          }
+        })
 
       // boundaryHover[i] => if we show or hide this prism
       prisms[i].style("display", boundaryHover[i] ? null : "none");
@@ -620,15 +737,17 @@ export default function BarChartMagnitude({
   // -------------------------------------------------------------------------------------
   const zoneWidth = 12;
   const getZoneX = i => xBins[i] - zoneWidth // /2
-  for (let i = 1; i < xBins.length - 1; i++) {
-    const zoneX = getZoneX(i)
-    g.append("rect")
+  function computeHoverZones() {
+    g.selectAll('.boundary-hover-zone').remove()
+    for (let i = 1; i < xBins.length - 1; i++) {
+      const zoneX = getZoneX(i)
+      g.append("rect")
       .attr("class", "boundary-hover-zone")
       .attr("x", zoneX)
       .attr("y", 0)
       .attr("width", zoneWidth)
       .attr("height", height)
-      .on("mouseover", function() {
+      .on("mouseover", function () {
         if (shrinkByDefault) {
           boundaryHover[i] = true;
           d3.select(this).style('display', 'none')
@@ -644,7 +763,9 @@ export default function BarChartMagnitude({
         //   }
         // }, 1000)
       });
+    }
   }
+  computeHoverZones()
 
   function updateHoverZones() {
     g.selectAll('.boundary-hover-zone')
@@ -726,11 +847,6 @@ export default function BarChartMagnitude({
     const segAxisGroup = g.append("g")
       .attr("class", "seg-scale-axis");
 
-
-    //
-
-
-    console.log('TODO add axis in-between for prism...')
     for (let i = 0; i < domains.length - 1; i++) {
       const xMin = xBins[i] + offsetFor(i);
       const xMax = xBins[i + 1];
@@ -792,7 +908,7 @@ export default function BarChartMagnitude({
 
       if (newPrism && boundaryHover[i+1]) {
         // TODO for each tick line, add a line from the yScales[i] to yScales[i+1] inside the prism
-        console.log(yScales[i].ticks(6))
+        // console.log(yScales[i].ticks(6))
 
         const nTicks = segAxisGroup.selectAll(".tick").nodes().length
 
@@ -801,7 +917,7 @@ export default function BarChartMagnitude({
         .attr("transform", `translate(${xMax-rectWidth}, 0)`)
         .style('pointer-events', 'none')
         .selectAll('line')
-        .data(yScales[i].ticks(6).concat(yScales[i+1].ticks(6)))
+        .data(yScales[i].ticks(nTicks).concat(yScales[i+1].ticks(6)))
         .enter()
         .append("line")
         .attr('x2', rectWidth)
@@ -961,6 +1077,36 @@ export default function BarChartMagnitude({
     });
     return node;
   };
+
+  node.split = function(x, percent) {
+    addPrism(x)
+    // const index = domains.findIndex(d => d >= x)
+    // domains.splice(index, 0, x)
+    //
+    // xBins.push(width)
+    // for (let i = 1; i < xBins.length - 1; ++i) {
+    //   xBins[i] = i*(width/(xBins.length-1))
+    // }
+    // console.log(xBins)
+    //
+    // // Add value to binSize and recompute
+    // binSize.push(0)
+    // for (let i = 0; i < binSize.length; ++i) {
+    //   binSize[i] = (domains[i+1] - domains[i]) / 50
+    // }
+    // console.log(binSize)
+    //
+    // bins = makeBins(data);
+    //
+    // computePrisms()
+    // computeYScales();
+    // computeHoverZones()
+    //
+    // boundaryHover = new Array(xBins.length).fill(false);
+    // applyMode()
+    //
+    // updateCharts();
+  }
 
   return node;
 }
