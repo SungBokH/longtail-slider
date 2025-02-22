@@ -77,39 +77,22 @@ export default function BarChartMagnitude({
   // -----------------------------------------------------------------------
   const globalMin = domains[0];
   const globalMax = domains[domains.length - 1];
-
-  // 3) Change snippet’s tick format from e.g. "1,000,000" => "1M" using nFormatter
   const globalXScale = d3.scaleLinear()
     .domain([globalMin, globalMax])
     .range([0, width]);
 
-  // We place the snippet at (marginTop - 30)
+  // We place the snippet at marginTop - 30 => e.g., 80 - 30 = 50
+  // so it's 30px above the main chart area
   const topAxisG = svg.append("g")
     .attr("class", "top-linear-axis")
     .attr("transform", `translate(${marginLeft}, ${marginTop - 30})`)
     .call(
       d3.axisTop(globalXScale)
         .ticks(6)
-        .tickFormat(d => {
-          // same approach as main chart: short format
-          let val = nFormatter(d, 1);
-          // remove trailing ".0" before K, M, G
-          return val.replace(/\.0(?=[GMK]|$)/, "");
-        })
+        .tickFormat(d3.format(","))
     );
 
-  // boundaries (all interior domain boundaries)
   const boundaries = domains.slice(1, -1);
-
-  // 1) Original bar was y1=0..y2=8, stroke-width=1
-  //    Enlarge by 40% => length ~ 11.2, stroke ~ 1.4
-  const barLength = 8 * 1.4;        // ~11.2
-  const barStrokeWidth = 1 * 1.4;   // ~1.4
-
-  // We’ll also draw lines connecting snippet => prism
-  // so we collect them in an array to process after we create these bars.
-  let connectingLines = [];
-
   topAxisG.selectAll(".prism-boundary-marker")
     .data(boundaries)
     .enter()
@@ -118,32 +101,9 @@ export default function BarChartMagnitude({
     .attr("x1", d => globalXScale(d))
     .attr("x2", d => globalXScale(d))
     .attr("y1", 0)
-    .attr("y2", barLength) // was 8, now 11.2
+    .attr("y2", 8)
     .attr("stroke", "red")
-    .attr("stroke-width", barStrokeWidth)
-    .each(function(d) {
-      // 4) Record the snippet’s bottom point so we can connect it to the prism
-      const xPos = globalXScale(d);
-      const yPos = barLength;
-      connectingLines.push({ domainValue: d, xSnip: xPos, ySnip: yPos });
-    });
-
-  // 2) Add label under each red bar
-  topAxisG.selectAll(".snippet-bar-label")
-    .data(boundaries)
-    .enter()
-    .append("text")
-    .attr("class", "snippet-bar-label")
-    .attr("text-anchor", "middle")
-    .attr("x", d => globalXScale(d))
-    .attr("y", barLength + 12) // a bit below the bar
-    .attr("fill", "red")
-    .style("font", "10px sans-serif")
-    .text(d => {
-      // same short format approach
-      let val = nFormatter(d, 1);
-      return val.replace(/\.0(?=[GMK]|$)/, "");
-    });
+    .attr("stroke-width", 1);
 
   // Minimal style
   const style = document.createElement('style');
@@ -277,13 +237,13 @@ export default function BarChartMagnitude({
   `;
   document.head.appendChild(style);
 
-  // clip
+  // clip the plot
   svg.append("defs")
     .append("clipPath")
-    .attr("id", "clipPlot")
+    .attr('id', 'clipPlot')
     .append("rect")
-    .attr("x", -marginLeft)
-    .attr("y", 0)
+    .attr('x', -marginLeft)
+    .attr('y', 0)
     .attr("width", width + marginLeft + marginRight)
     .attr("height", height + marginBottom);
 
@@ -292,14 +252,9 @@ export default function BarChartMagnitude({
     .attr("transform", `translate(${marginLeft}, ${marginTop})`);
 
   const content = g.append("g")
-    .attr("clip-path", "url(#clipPlot)");
+    .attr('clip-path', 'url(#clipPlot)');
 
-  // (Rest of the original code is unchanged, except we add the connecting lines after we build the chart.)
-  // ...
-  // -------------------------------------------------------------------------
-  // Toggle booleans / applyMode / offsetFor / chartXPos / etc. remain the same
-  // ...
-  
+  // Toggle booleans
   let shrinkByDefault = false;
   let newPrism = true;
   let boundaryHover = new Array(xBins.length).fill(false);
@@ -321,6 +276,7 @@ export default function BarChartMagnitude({
     return apexOffsetTop;
   }
 
+  // Domain/scale logic
   function getDomainIndex(value) {
     for (let i = 0; i < domains.length - 1; ++i) {
       if (value >= domains[i] && value < domains[i + 1]) return i;
@@ -402,7 +358,6 @@ export default function BarChartMagnitude({
     }
   }
   computeYScales();
-
   function getYScaleForBin(b) {
     const domainIdx = getDomainIndex(b.x0);
     const showPrism = boundaryHover[domainIdx + 1];
@@ -419,11 +374,11 @@ export default function BarChartMagnitude({
   }
 
   // Groups for bars/lines
-  const barGroup = g.append("g").classed("barGroup", true);
-  const foregroundBarGroup = g.append("g").classed("foreground", true);
-  const lineTicks = g.append("path").classed("line tick", true);
-  const lineGroup = content.append("path").classed("line", true);
-  const lineForegroundGroup = content.append("path").classed("foreground line", true);
+  const barGroup = g.append("g").classed('barGroup', true);
+  const foregroundBarGroup = g.append("g").classed('foreground', true);
+  const lineTicks = g.append("path").classed('line', true).classed('tick', true);
+  const lineGroup = content.append("path").classed('line', true);
+  const lineForegroundGroup = content.append("path").classed('foreground line', true);
 
   // Brush & highlight
   let brushDomainLeft = null;
@@ -464,7 +419,7 @@ export default function BarChartMagnitude({
     }
   }
   function filterTrigger(detail) {
-    node.dispatchEvent(new CustomEvent("filter", { detail }));
+    node.dispatchEvent(new CustomEvent('filter', { detail }));
   }
   function brushedChart(event) {
     const s = event.selection;
@@ -488,6 +443,7 @@ export default function BarChartMagnitude({
   // Grid lines
   let customGridX = [];
   let customGridY = [];
+
   function drawCustomGridLines() {
     g.selectAll(".custom-grid-line").remove();
 
@@ -532,12 +488,14 @@ export default function BarChartMagnitude({
     g.selectAll(".custom-grid-line").raise();
   }
 
+  // Toggle #1: short‐format label
   let useShortFormat = false;
 
-  // *** Toggles placed near top so they do not overlap snippet ***
+  // 2) Place the toggle buttons near the very top so they do not overlap the snippet
+  // Let's position them at (x, y) = (width - 160, 5) and (width - 80, 5)
   svg.append("foreignObject")
     .attr("x", width - 160)
-    .attr("y", 5)
+    .attr("y", 5) // place near top
     .attr("width", 70)
     .attr("height", 24)
     .append("xhtml:button")
@@ -550,9 +508,10 @@ export default function BarChartMagnitude({
       updateCharts();
     });
 
+  // Toggle #2: "Hover Prism" vs. "Install Prism"
   const prismModeFO = svg.append("foreignObject")
     .attr("x", width - 80)
-    .attr("y", 5)
+    .attr("y", 5) // also near top
     .attr("width", 70)
     .attr("height", 24);
 
@@ -572,7 +531,9 @@ export default function BarChartMagnitude({
   for (let i = 1; i < xBins.length - 1; i++) {
     const drag = d3.drag()
       .on("start", function() {
-        d3.select(this).classed("dragged", true).raise();
+        d3.select(this)
+          .classed('dragged', true)
+          .raise();
       })
       .on("drag", (event) => {
         let newX = event.x - rectWidth / 2;
@@ -584,7 +545,8 @@ export default function BarChartMagnitude({
         updatePrisms();
       })
       .on("end", function() {
-        d3.select(this).classed("dragged", false);
+        d3.select(this)
+          .classed('dragged', false);
       });
 
     const group = g.append("g").call(drag);
@@ -611,10 +573,11 @@ export default function BarChartMagnitude({
           const currentlyDragged = false;
           if (shrinkByDefault && !currentlyDragged) {
             boundaryHover[i] = false;
-            g.selectAll(".boundary-hover-zone").style("display", null);
+            g.selectAll(`.boundary-hover-zone`).style('display', null);
             updatePrisms();
           }
         });
+      // Show or hide
       prisms[i].style("display", boundaryHover[i] ? null : "none");
     }
     computeYScales();
@@ -636,22 +599,24 @@ export default function BarChartMagnitude({
       .on("mouseover", function() {
         if (shrinkByDefault) {
           boundaryHover[i] = true;
-          d3.select(this).style("display", "none");
+          d3.select(this).style('display', 'none');
           updatePrisms();
         }
       })
       .on("mouseout", () => {});
   }
+
   function updateHoverZones() {
-    g.selectAll(".boundary-hover-zone")
-      .attr("x", (d,i) => getZoneX(i+1));
+    g.selectAll('.boundary-hover-zone')
+      .attr('x', (d,i) => getZoneX(i+1));
   }
 
+  // updateCharts
   function updateCharts() {
-    lineGroup.style("display", "none");
+    lineGroup.style('display', 'none');
     barGroup.selectAll(".bar").remove();
 
-    if (type === "bar") {
+    if (type === 'bar') {
       barGroup.selectAll(".bar")
         .data(bins)
         .enter()
@@ -662,6 +627,7 @@ export default function BarChartMagnitude({
         .attr("width", d => Math.abs(chartXPos(d.x1) - chartXPos(d.x0)) - 1)
         .attr("height", d => (height - getYScaleForBin(d)(d.values.length)));
 
+      // Foreground bars (filtered)
       foregroundBarGroup.selectAll(".bar")
         .data(filteredBins, d => d.x0)
         .join(
@@ -684,7 +650,7 @@ export default function BarChartMagnitude({
           exit => exit.remove()
         );
 
-    } else if (type === "line") {
+    } else if (type === 'line') {
       function add_first_last(arr) {
         if (!arr.length) return arr;
         const first = arr[0];
@@ -701,12 +667,12 @@ export default function BarChartMagnitude({
 
       lineGroup
         .datum(add_first_last(bins))
-        .attr("d", lineGen)
-        .style("display", null);
+        .attr('d', lineGen)
+        .style('display', null);
 
       lineForegroundGroup
         .datum(add_first_last(filteredBins))
-        .attr("d", lineGen);
+        .attr('d', lineGen);
     }
 
     g.selectAll(".y-tick,.x-tick,.seg-scale-axis").remove();
@@ -757,21 +723,21 @@ export default function BarChartMagnitude({
       segAxisGroup.append("g")
         .attr("class", "x-seg-axis")
         .attr("transform", `translate(0, ${height})`)
-        .style("pointer-events", "none")
+        .style('pointer-events', 'none')
         .call(xAxis);
 
       segAxisGroup.append("g")
         .attr("class", "y-seg-axis-left")
         .attr("transform", `translate(${xMin}, 0)`)
-        .style("pointer-events", "none")
+        .style('pointer-events', 'none')
         .call(yAxis);
 
       if (newPrism && boundaryHover[i+1]) {
         segAxisGroup.append("g")
           .attr("class", "y-seg-axis-prism")
           .attr("transform", `translate(${xMax - rectWidth}, 0)`)
-          .style("pointer-events", "none")
-          .selectAll("line")
+          .style('pointer-events', 'none')
+          .selectAll('line')
           .data(yScales[i].ticks(6).concat(yScales[i+1].ticks(6)))
           .enter()
           .append("line")
@@ -783,37 +749,6 @@ export default function BarChartMagnitude({
 
     setBrushSelection();
     drawCustomGridLines();
-
-    // 4) Now add connecting lines from snippet => prism:
-    //    For each boundary, we find its index, and draw a line from snippet's bottom
-    //    to the top of the boundary in the main chart's coordinate system.
-    //    We only do this after the main chart is laid out, so xBins is stable.
-    svg.selectAll(".snippet-connector-line").remove();
-
-    boundaries.forEach(d => {
-      const iBoundary = domains.indexOf(d); // domain's index in 'domains'
-      if (iBoundary < 0) return;
-
-      // snippet point (absolute coords)
-      // topAxis is at (marginLeft, marginTop - 30) => so snippet bar bottom is:
-      const xSnipAbs = marginLeft + globalXScale(d);
-      const ySnipAbs = marginTop - 30 + barLength; // barLength ~ 11.2
-
-      // main chart boundary (top of the prism):
-      // The boundary in main chart is xBins[iBoundary], y=0 in group g => absolute is:
-      const xPrismAbs = marginLeft + xBins[iBoundary];
-      const yPrismAbs = marginTop; // top of main chart
-
-      svg.append("line")
-        .attr("class", "snippet-connector-line")
-        .attr("x1", xSnipAbs)
-        .attr("y1", ySnipAbs)
-        .attr("x2", xPrismAbs)
-        .attr("y2", yPrismAbs)
-        .attr("stroke", "red")
-        .attr("stroke-dasharray", "2,2")
-        .attr("stroke-width", 1);
-    });
   }
 
   applyMode();
@@ -822,12 +757,12 @@ export default function BarChartMagnitude({
   // External Crossfilter / API
   node.crossfilter = (filteredData) => {
     if (!filteredData) {
-      barGroup.classed("background", false);
-      lineGroup.classed("background", false);
+      barGroup.classed('background', false);
+      lineGroup.classed('background', false);
       filteredBins = [];
     } else {
-      barGroup.classed("background", true);
-      lineGroup.classed("background", true);
+      barGroup.classed('background', true);
+      lineGroup.classed('background', true);
       filteredBins = makeBins(filteredData);
     }
     updateCharts();

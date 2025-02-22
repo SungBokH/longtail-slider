@@ -138,6 +138,22 @@ export default function BarChartMagnitude({
       pointer-events: none;
       stroke-dasharray: 4,2;  /* dashed style */
     }
+
+    /* For multiple horizontal lines */
+    .multi-hline {
+      fill: none;
+      stroke: red;
+      stroke-dasharray: 4,2;
+      stroke-width: 1;
+    }
+
+    /* For vertical lines */
+    .vline-prism {
+      fill: none;
+      stroke: red;
+      stroke-dasharray: 4,2;
+      stroke-width: 1;
+    }
   `;
   document.head.appendChild(style);
 
@@ -316,8 +332,6 @@ export default function BarChartMagnitude({
 
   // ----------------------------------
   // Multiple custom grid lines (X & Y)
-  // Extended so horizontal lines pass
-  // through angled prism region.
   // ----------------------------------
   let customGridX = [];
   let customGridY = [];
@@ -326,7 +340,7 @@ export default function BarChartMagnitude({
     // Remove old lines
     g.selectAll(".custom-grid-line").remove();
 
-    // 1) Vertical lines: draw from apex (y=0) down to bottom (y=height).
+    // 1) Vertical lines
     customGridX.forEach(xVal => {
       const xPos = chartXPos(xVal);
       g.append("line")
@@ -337,21 +351,16 @@ export default function BarChartMagnitude({
         .attr("y2", height);
     });
 
-    // 2) Horizontal lines: do a "step" across each domain segment
-    //    respecting the prism’s angled top.
+    // 2) Horizontal lines
     customGridY.forEach(binCount => {
-      // For each segment i, we get yPos from yScales[i](binCount).
-      // If 0 <= yPos <= height, we draw a sub-line (angled or rectangular).
       for (let i = 0; i < yScales.length; i++) {
         const yPos = yScales[i](binCount);
-        if (yPos < 0 || yPos > height) continue; // out of range
+        if (yPos < 0 || yPos > height) continue;
 
-        // The rectangular portion of segment i goes from xBins[i]+(some offset) to xBins[i+1].
         const segmentLeft = xBins[i] + (i > 0 ? rectWidth : 0);
         const segmentRight = xBins[i + 1];
 
         if (yPos >= yForPrismTop) {
-          // --- In the rectangular region ---
           g.append("line")
             .attr("class", "custom-grid-line")
             .attr("x1", segmentLeft)
@@ -359,34 +368,11 @@ export default function BarChartMagnitude({
             .attr("y1", yPos)
             .attr("y2", yPos);
         } else {
-          // --- In the angled region of the prism ---
-          // We find left & right intersection with the sloping top.
-          // The apex is at (xBins[i]+ rectWidth/2, 0), corners at:
-          //   leftCorner = (xBins[i], yForPrismTop)
-          //   rightCorner = (xBins[i] + rectWidth, yForPrismTop)
-
-          // param from apex => leftCorner:
-          //   apex + t( leftCorner - apex ) => we solve for t by matching Y = yPos
-          //   apex = (xa, ya) = (xBins[i]+ rectWidth/2, 0)
-          //   leftCorner = (xl, yl) = (xBins[i], yForPrismTop)
-          //   Y(t) = ya + t*(yl - ya) => 0 + t*(yForPrismTop - 0) => t*yForPrismTop
-          //   t = yPos / yForPrismTop
-          //   X(t) = xa + t*(xl - xa)
-          //        = (xBins[i]+ rectWidth/2) + t*( xBins[i] - (xBins[i]+ rectWidth/2) )
-          //        = (xBins[i] + rectWidth/2) + t*( -rectWidth/2 )
-          const tLeft = yPos / yForPrismTop;
-          const xLeft = (xBins[i] + rectWidth / 2) + tLeft * (-rectWidth / 2);
-
-          // param from apex => rightCorner:
-          //   apex = (xa, ya) = (xBins[i]+ rectWidth/2, 0)
-          //   rightCorner = (xr, yr) = (xBins[i]+ rectWidth, yForPrismTop)
-          //   Y(t) = t*yForPrismTop => t= yPos / yForPrismTop
-          //   X(t) = xa + t*(xr - xa)
-          //        = (xBins[i] + rectWidth/2) + t*( (xBins[i]+ rectWidth) - (xBins[i]+ rectWidth/2) )
-          //        = (xBins[i] + rectWidth/2) + t*( rectWidth/2 )
-          const tRight = yPos / yForPrismTop;
-          const xRight = (xBins[i] + rectWidth / 2) + tRight * (rectWidth / 2);
-
+          // angled apex region
+          const t = yPos / yForPrismTop;
+          const apexX = xBins[i] + rectWidth / 2;
+          const xLeft = apexX + t * (xBins[i] - apexX);
+          const xRight = apexX + t * ((xBins[i] + rectWidth) - apexX);
           g.append("line")
             .attr("class", "custom-grid-line")
             .attr("x1", xLeft)
@@ -443,7 +429,6 @@ export default function BarChartMagnitude({
         .y(d => getYScaleForBin(d)(d.values.length));
 
       function domainsToLineTicks() {
-        // purely for dashed boundary ticks at each domain
         const arr = [];
         for (const d of domains) {
           if (arr.length > 0) {
@@ -541,13 +526,12 @@ export default function BarChartMagnitude({
     drawCustomGridLines();
   }
 
-  // Prism creation (unchanged except for geometry)
+  // Prism creation
   function createPrism(x, y, dragBehavior) {
     const group = g.append("g").call(dragBehavior);
     group.append("polygon")
       .attr("class", "prism")
       .attr("points",
-        // apex is (x + rectWidth/2, y - apexOffsetTop) => effectively (x + rectWidth/2, 0)
         `${(x + rectWidth / 2)},${y - apexOffsetTop} ` +
         `${x},${y} ` +
         `${x},${height} ` +
@@ -619,10 +603,8 @@ export default function BarChartMagnitude({
     return node;
   };
 
-  // Public setter for multiple user-defined dashed grid lines,
-  // extended through the prism region.
+  // Existing "customGridLine"
   node.customGridLine = (xVals, yVals) => {
-    // Convert xVals into an array
     if (xVals === undefined || xVals === null) {
       customGridX = [];
     } else if (!Array.isArray(xVals)) {
@@ -631,7 +613,6 @@ export default function BarChartMagnitude({
       customGridX = xVals;
     }
 
-    // Convert yVals into an array
     if (yVals === undefined || yVals === null) {
       customGridY = [];
     } else if (!Array.isArray(yVals)) {
@@ -641,6 +622,112 @@ export default function BarChartMagnitude({
     }
 
     updateCharts();
+    return node;
+  };
+
+  // Existing single "drawHorizontalLine"
+  node.drawHorizontalLine = function (binCountValue) {
+    g.selectAll(".connected-binCount-line").remove();
+    if (binCountValue == null) {
+      return node;
+    }
+
+    const points = [];
+    let yPrev = yScales[0](binCountValue);
+    points.push([xBins[0], yPrev]);
+    points.push([xBins[1], yPrev]);
+
+    const N = yScales.length;
+    for (let i = 1; i < N; i++) {
+      const yThis = yScales[i](binCountValue);
+      points.push([xBins[i], yPrev]);              // prism diagonal start
+      points.push([xBins[i] + rectWidth, yThis]);  // prism diagonal end
+      points.push([xBins[i] + rectWidth, yThis]);  // sub-chart horizontal start
+      points.push([xBins[i + 1], yThis]);          // sub-chart horizontal end
+      yPrev = yThis;
+    }
+
+    const lineGen = d3.line().x(d => d[0]).y(d => d[1]);
+    const pathData = lineGen(points);
+
+    g.append("path")
+      .attr("class", "connected-binCount-line")
+      .attr("d", pathData)
+      .attr("fill", "none")
+      .attr("stroke", "red")
+      .attr("stroke-dasharray", "4,2")
+      .attr("stroke-width", 1);
+
+    return node;
+  };
+
+  // ------------------------------------------------------------
+  // (1) Multiple horizontal lines
+  // ------------------------------------------------------------
+  node.drawMultipleHorizontalLines = function (binCounts) {
+    // Remove old multi-hline paths
+    g.selectAll(".multi-hline").remove();
+
+    // If null or empty => do nothing
+    if (!binCounts || !binCounts.length) {
+      return node;
+    }
+
+    // For each binCount, draw a separate path
+    binCounts.forEach(binCountValue => {
+      const points = [];
+      let yPrev = yScales[0](binCountValue);
+      points.push([xBins[0], yPrev]);
+      points.push([xBins[1], yPrev]);
+
+      const N = yScales.length;
+      for (let i = 1; i < N; i++) {
+        const yThis = yScales[i](binCountValue);
+        points.push([xBins[i], yPrev]);              
+        points.push([xBins[i] + rectWidth, yThis]);  
+        points.push([xBins[i] + rectWidth, yThis]);  
+        points.push([xBins[i + 1], yThis]);          
+        yPrev = yThis;
+      }
+
+      const lineGen = d3.line()
+        .x(d => d[0])
+        .y(d => d[1]);
+
+      const pathData = lineGen(points);
+
+      g.append("path")
+        .attr("class", "multi-hline")
+        .attr("d", pathData);
+    });
+
+    return node;
+  };
+
+  // ------------------------------------------------------------
+  // (2) Vertical lines
+  // => Now draws a COMPLETELY VERTICAL line from y=0 to y=height
+  // ------------------------------------------------------------
+  node.drawVerticalLines = function (xValues) {
+    // Remove old vertical lines
+    g.selectAll(".vline-prism").remove();
+
+    // If null or empty => do nothing
+    if (!xValues || !xValues.length) {
+      return node;
+    }
+
+    xValues.forEach(xVal => {
+      const xPos = chartXPos(xVal);
+      // Fully vertical line from top (y=0) to bottom (y=height)
+      g.append("line")
+        .attr("class", "vline-prism")
+        .attr("x1", xPos)
+        .attr("x2", xPos)
+        .attr("y1", 0)
+        .attr("y2", height);
+    });
+
     return node;
   };
 
