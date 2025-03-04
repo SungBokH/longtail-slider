@@ -27,7 +27,7 @@ export default function BarChartMagnitude({
 
   width = 400,
   height = 200,
-  marginTop = 20,
+  marginTop = 80,//20,
   marginRight = 20,
   marginBottom = 30,
   marginLeft = 40,
@@ -71,6 +71,89 @@ export default function BarChartMagnitude({
     .attr("width", width + marginLeft + marginRight)
     .attr("height", totalHeight);
   const node = svg.node();
+
+  // -----------------------------------------------------------------------
+  // Single linear x-axis on top + vertical markers for prism boundaries
+  // -----------------------------------------------------------------------
+  const globalMin = domains[0];
+  const globalMax = domains[domains.length - 1];
+
+  // 3) Change snippet’s tick format from e.g. "1,000,000" => "1M" using nFormatter
+  const globalXScale = d3.scaleLinear()
+  .domain([globalMin, globalMax])
+  .range([0, width]);
+
+  // We place the snippet at (marginTop - 30)
+  const topAxisG = svg.append("g")
+  .attr("class", "top-linear-axis")
+  .attr("transform", `translate(${marginLeft}, ${marginTop - 30})`)
+  .call(
+    d3.axisTop(globalXScale)
+    .ticks(6)
+    .tickFormat(d => {
+      // same approach as main chart: short format
+      let val = nFormatter(d, 1);
+      // remove trailing ".0" before K, M, G
+      return val.replace(/\.0(?=[GMK]|$)/, "");
+    })
+  );
+
+  // boundaries (all interior domain boundaries)
+  let boundaries = domains.slice(1, -1);
+
+  // 1) Original bar was y1=0..y2=8, stroke-width=1
+  //    Enlarge by 40% => length ~ 11.2, stroke ~ 1.4
+  const barLength = 2//8 * 1.4;        // ~11.2
+  const barStrokeWidth = 1 * 1.4;   // ~1.4
+
+  // We’ll also draw lines connecting snippet => prism
+  // so we collect them in an array to process after we create these bars.
+  let connectingLines = [];
+
+  function updateBoundaryMarkers() {
+    boundaries = domains.slice(1, -1);
+
+    topAxisG.selectAll(".prism-boundary-marker")
+    .remove()
+
+
+    topAxisG.selectAll(".prism-boundary-marker")
+    .data(boundaries)
+    .enter()
+    .append("line")
+    .attr("class", "prism-boundary-marker")
+    .attr("x1", d => globalXScale(d))
+    .attr("x2", d => globalXScale(d))
+    .attr("y1", 0)
+    .attr("y2", barLength) // was 8, now 11.2
+    .attr("stroke", "gray")
+    .attr("stroke-width", barStrokeWidth)
+    .each(function (d) {
+      // 4) Record the snippet’s bottom point so we can connect it to the prism
+      const xPos = globalXScale(d);
+      const yPos = 0//barLength;
+      connectingLines.push({domainValue: d, xSnip: xPos, ySnip: yPos});
+    });
+
+    // 2) Add label under each red bar
+    // topAxisG.selectAll(".snippet-bar-label")
+    // .remove()
+    // topAxisG.selectAll(".snippet-bar-label")
+    // .data(boundaries)
+    // .enter()
+    // .append("text")
+    // .attr("class", "snippet-bar-label")
+    // .attr("text-anchor", "middle")
+    // .attr("x", d => globalXScale(d))
+    // .attr("y", barLength + 12) // a bit below the bar
+    // .attr("fill", "red")
+    // .style("font", "10px sans-serif")
+    // .text(d => {
+    //   // same short format approach
+    //   let val = nFormatter(d, 1);
+    //   return val.replace(/\.0(?=[GMK]|$)/, "");
+    // });
+  }
 
   // Minimal style
   const style = document.createElement('style');
@@ -202,6 +285,10 @@ export default function BarChartMagnitude({
         stroke-dasharray: 2,1;
       }
     }
+    
+    .hover-x-axis {
+      cursor: pointer;
+    }
   `;
   document.head.appendChild(style);
 
@@ -237,6 +324,20 @@ export default function BarChartMagnitude({
     .append('text')
     .text('✂')
     .attr('transform', `translate(${-marginLeft/2},${height+5})rotate(-90)`)
+
+  const removeFromPrismThreshold = 5 // px
+  function nearPrism(x) {
+    return domains.slice(1, -1).some(d => Math.abs(chartXPos(d) - x) < removeFromPrismThreshold)
+  }
+  function getNearestPrimIndex(x) {
+    for (let i = 1; i < domains.length - 1; ++i) {
+      if (Math.abs(chartXPos(domains[i]) - x) < removeFromPrismThreshold) {
+        return i
+      }
+    }
+    return -1
+  }
+
   hoverXAxis.append('rect')
     .attr('class', 'hover-x-axis')
     .attr('x', 0)
@@ -246,24 +347,44 @@ export default function BarChartMagnitude({
     .attr('fill', 'transparent')
     // .attr('fill-opacity', .5)
     .on('mousemove', function(evt) {
-      // TODO display value + quantile + cut icon
       const [x,y] = d3.pointer(evt)
       const xPos = invertChartXPos(x)
+
       const quantile = (xPos - minVal) / (maxVal - minVal) // TODO
       hoverXAxisText
         .attr('x', x - 15)
-        .text(nFormatter(xPos,1));
+        .text(nFormatter(xPos,1))
       hoverXAxisQuantileText
         .attr('x', x - 15)
-        .text(nFormatter(quantile,2)+'%');
+        .text(quantile.toFixed(3)+'%');
       hoverXAxisIcon
         // .attr('x', x - 15)
         .attr('transform', `translate(${x+5},${height+5})rotate(-90)`)
         // .style('display', null)
+
+      // if xPos near a prim, display a red cross and remove the prism on left click
+      if (nearPrism(x)) {
+        hoverXAxisText
+        .attr('x', x - 15)
+        .style('display', 'none')
+        // .text('delete on click')
+        // .style('fill', 'red');
+        hoverXAxisIcon.text('❌')
+      } else {
+        hoverXAxisText.style('display', null)
+        hoverXAxisIcon.text('✂')
+      }
     })
     .on('click', (evt) => {
       const [x,y] = d3.pointer(evt)
       const xPos = invertChartXPos(x)
+
+      // remove on click if near prism
+      if (nearPrism(x)) {
+        removePrism(getNearestPrimIndex(x))
+        return
+      }
+
       const quantile = (xPos - minVal) / (maxVal - minVal)
       node.split(xPos, quantile)
     })
@@ -272,6 +393,7 @@ export default function BarChartMagnitude({
       hoverXAxisQuantileText.text(null)
       hoverXAxisIcon
       .transition()
+        .text('✂')
         .attr('transform', `translate(${-marginLeft/2},${height+5})rotate(-90)`)
         // .style('display', 'none')
     })
@@ -900,11 +1022,13 @@ export default function BarChartMagnitude({
         .call(xAxis);
 
       // LEFT Y‐AXIS
-      segAxisGroup.append("g")
+      const xSegAxis = segAxisGroup.append("g")
         .attr("class", "y-seg-axis-left")
         .attr("transform", `translate(${xMin}, 0)`)
         .style('pointer-events', 'none')
         .call(yAxis);
+      xSegAxis.selectAll('.tick line')
+      .style('stroke-dasharray', (i+1) * 1) // TODO depending on something?
 
       if (newPrism && boundaryHover[i+1]) {
         // TODO for each tick line, add a line from the yScales[i] to yScales[i+1] inside the prism
@@ -915,6 +1039,7 @@ export default function BarChartMagnitude({
         segAxisGroup.append("g")
         .attr("class", "y-seg-axis-prism")
         .attr("transform", `translate(${xMax-rectWidth}, 0)`)
+        .attr('clip-path', 'url(#clipPlot)')
         .style('pointer-events', 'none')
         .selectAll('line')
         .data(yScales[i].ticks(nTicks).concat(yScales[i+1].ticks(6)))
@@ -931,6 +1056,40 @@ export default function BarChartMagnitude({
     setBrushSelection();
 
     drawCustomGridLines();
+
+    updateBoundaryMarkers()
+
+    // 4) Now add connecting lines from snippet => prism:
+    //    For each boundary, we find its index, and draw a line from snippet's bottom
+    //    to the top of the boundary in the main chart's coordinate system.
+    //    We only do this after the main chart is laid out, so xBins is stable.
+    svg.selectAll(".snippet-connector-line").remove();
+
+    boundaries.forEach(d => {
+      const iBoundary = domains.indexOf(d); // domain's index in 'domains'
+      if (iBoundary < 0) return;
+
+      // snippet point (absolute coords)
+      // topAxis is at (marginLeft, marginTop - 30) => so snippet bar bottom is:
+      const xSnipAbs = marginLeft + globalXScale(d);
+      const ySnipAbs = marginTop - 30 + barLength; // barLength ~ 11.2
+
+      // main chart boundary (top of the prism):
+      // The boundary in main chart is xBins[iBoundary], y=0 in group g => absolute is:
+      const xPrismAbs = marginLeft + xBins[iBoundary];
+      const yPrismAbs = marginTop; // top of main chart
+
+      svg.append("line")
+      .attr("class", "snippet-connector-line")
+      .attr("x1", xSnipAbs)
+      .attr("y1", ySnipAbs)
+      .attr("x2", xPrismAbs)
+      .attr("y2", yPrismAbs)
+      .attr("stroke", "black")
+      .style('opacity', .3)
+      .attr("stroke-dasharray", "2,2")
+      .attr("stroke-width", .5);
+    });
   }
 
   // -------------------------------------------------------------------------------------
@@ -1078,35 +1237,7 @@ export default function BarChartMagnitude({
     return node;
   };
 
-  node.split = function(x, percent) {
-    addPrism(x)
-    // const index = domains.findIndex(d => d >= x)
-    // domains.splice(index, 0, x)
-    //
-    // xBins.push(width)
-    // for (let i = 1; i < xBins.length - 1; ++i) {
-    //   xBins[i] = i*(width/(xBins.length-1))
-    // }
-    // console.log(xBins)
-    //
-    // // Add value to binSize and recompute
-    // binSize.push(0)
-    // for (let i = 0; i < binSize.length; ++i) {
-    //   binSize[i] = (domains[i+1] - domains[i]) / 50
-    // }
-    // console.log(binSize)
-    //
-    // bins = makeBins(data);
-    //
-    // computePrisms()
-    // computeYScales();
-    // computeHoverZones()
-    //
-    // boundaryHover = new Array(xBins.length).fill(false);
-    // applyMode()
-    //
-    // updateCharts();
-  }
+  node.split = addPrism
 
   return node;
 }
