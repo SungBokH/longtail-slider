@@ -74,7 +74,7 @@ export default function BarChartMagnitude({
   const node = svg.node();
 
   // -----------------------------------------------------------------------
-  // Single linear x-axis + (later) snippet
+  // Single linear x-axis + snippet
   // -----------------------------------------------------------------------
   const globalMin = domains[0];
   const globalMax = domains[domains.length - 1];
@@ -86,23 +86,23 @@ export default function BarChartMagnitude({
   // boundaries (all interior domain boundaries)
   const boundaries = domains.slice(1, -1);
 
+  // We’ll also store some snippet-connector line coordinates
+  let connectingLines = [];
+
   // -----------------------------------------------------------------------
   // SNIPPET BELOW (UPSIDE DOWN)
   // -----------------------------------------------------------------------
-
-  // For the snippet, we’ll give it a small “height” (just enough room for a bar).
-  // We place the axis at the snippet’s bottom, and the bar extends upward.
   const barLength = 8 * 1.4;         // ~11.2
   const barStrokeWidth = 1 * 1.4;    // ~1.4
   const snippetHeight = barLength + 20;  // extra space
 
-  // (EDIT #1) MOVE THE SNIPPET UP: from +30 down to +10 for closeness:
-  const snippetBase = marginTop + height + brushHeight + brushOffset - 20;
-
+  // The group that holds our snippet is placed below the chart+brush
+  const snippetBase = marginTop + height + brushHeight + brushOffset + 30;
   const topAxisG = svg.append("g")
     .attr("class", "top-linear-axis")
     .attr("transform", `translate(${marginLeft}, ${snippetBase})`);
 
+  // Use axisBottom for the snippet
   topAxisG.append("g")
     .attr("class", "snippet-axis")
     .attr("transform", `translate(0, ${snippetHeight})`)
@@ -115,7 +115,7 @@ export default function BarChartMagnitude({
         })
     );
 
-  // Draw boundary markers upside-down
+  // Red boundary markers in snippet
   topAxisG.selectAll(".prism-boundary-marker")
     .data(boundaries)
     .enter()
@@ -126,9 +126,13 @@ export default function BarChartMagnitude({
     .attr("y1", snippetHeight)
     .attr("y2", snippetHeight - barLength)
     .attr("stroke", "red")
-    .attr("stroke-width", barStrokeWidth);
+    .attr("stroke-width", barStrokeWidth)
+    .each(function(d) {
+      const xPos = globalXScale(d);
+      connectingLines.push({ domainValue: d, xSnip: xPos, ySnip: snippetHeight - barLength });
+    });
 
-  // (EDIT #2) LABEL ABOVE THE CUES: shorten the gap (was -12). Make it e.g. -6.
+  // Label above top of the red bar
   topAxisG.selectAll(".snippet-bar-label")
     .data(boundaries)
     .enter()
@@ -136,7 +140,7 @@ export default function BarChartMagnitude({
     .attr("class", "snippet-bar-label")
     .attr("text-anchor", "middle")
     .attr("x", d => globalXScale(d))
-    .attr("y", snippetHeight - barLength - 6) // <-- changed from -12
+    .attr("y", snippetHeight - barLength - 12)
     .attr("fill", "red")
     .style("font", "10px sans-serif")
     .text(d => {
@@ -144,7 +148,7 @@ export default function BarChartMagnitude({
       return val.replace(/\.0(?=[GMK]|$)/, "");
     });
 
-  // For consistency, percentile bars also from snippetHeight down
+  // For consistency, percentile bars in snippet
   const sortedData = data.slice().sort((a,b) => a - b);
   const percentiles = d3.range(1, 10).map(p => d3.quantileSorted(sortedData, p/10));
 
@@ -309,9 +313,7 @@ export default function BarChartMagnitude({
   const content = g.append("g")
     .attr("clip-path", "url(#clipPlot)");
 
-  // ------------------------------------------------------------
-  //  Toggles / logic
-  // ------------------------------------------------------------
+  // Toggles / logic
   let shrinkByDefault = false;
   let newPrism = true;
   let boundaryHover = new Array(xBins.length).fill(false);
@@ -430,7 +432,7 @@ export default function BarChartMagnitude({
     return yScales[domainIdx];
   }
 
-  // Groups for bars/lines
+  // Bar/line groups
   const barGroup = g.append("g").classed("barGroup", true);
   const foregroundBarGroup = g.append("g").classed("foreground", true);
   const lineTicks = g.append("path").classed("line tick", true);
@@ -440,10 +442,8 @@ export default function BarChartMagnitude({
   // Brush & highlight
   let brushDomainLeft = null;
   let brushDomainRight = null;
-
-  // Brush is above the chart
   const brush = d3.brushX()
-    .extent([[0, -brushHeight - brushOffset], [width, -brushOffset]])
+    .extent([[0, height + brushOffset], [width, height + brushOffset + brushHeight]])
     .on("brush end", brushedChart);
 
   const gBrush = g.append("g").attr("class", "brush").call(brush);
@@ -548,7 +548,7 @@ export default function BarChartMagnitude({
 
   let useShortFormat = false;
 
-  // Toggles near top so they do not overlap snippet
+  // *** Toggles placed near top so they do not overlap snippet ***
   svg.append("foreignObject")
     .attr("x", width - 160)
     .attr("y", 5)
@@ -606,29 +606,11 @@ export default function BarChartMagnitude({
     prisms[i] = group;
   }
 
-  //
-  // Draw or re-draw the dotted lines from snippet top --> prism’s lower corner
-  //
-  function updateConnectors() {
-    svg.selectAll(".snippet-connector-line").remove();
-    for (let i = 1; i < domains.length - 1; i++) {
-      const d = domains[i];
-      const snippetX = marginLeft + globalXScale(d);
-      const snippetY = snippetBase + (snippetHeight - barLength);
-      const prismX = marginLeft + xBins[i];
-      const prismY = marginTop + height;
-
-      svg.append("line")
-        .attr("class", "snippet-connector-line")
-        .attr("x1", snippetX)
-        .attr("y1", snippetY)
-        .attr("x2", prismX)
-        .attr("y2", prismY)
-        .attr("stroke", "red")
-        .attr("stroke-dasharray", "2,2");
-    }
-  }
-
+  // --------------------------------------------------------------------------
+  // ADJUSTMENT: The start of the red dashed line is always the domain boundary,
+  // i.e. boundaries[i-1], rather than a domainVal from invertChartXPos(...).
+  // So the snippet top is *constant*, never drifting with the prism.
+  // --------------------------------------------------------------------------
   function updatePrisms() {
     for (let i = 1; i < xBins.length - 1; i++) {
       let xBin = xBins[i];
@@ -653,10 +635,45 @@ export default function BarChartMagnitude({
         });
       prisms[i].style("display", boundaryHover[i] ? null : "none");
     }
+
     computeYScales();
+
+    // Remove old snippet lines
+    svg.selectAll(".snippet-to-prism-line").remove();
+
+    // For each active prism boundary, draw a line from the snippet boundary's top (constant)
+    // to the prism's bottom-right corner on the x-axis
+    for (let i = 1; i < xBins.length - 1; i++) {
+      if (!boundaryHover[i]) continue;
+
+      // Prism's bottom-right corner in absolute coords
+      let xBinFinal = xBins[i];
+      if (newPrism && boundaryHover[i]) {
+        xBinFinal -= rectWidth;
+      }
+      const prismCornerX = marginLeft + xBinFinal + rectWidth;
+      const prismCornerY = marginTop + height;
+
+      // Instead of invertChartXPos, we fix the snippet top domain as boundaries[i-1]
+      // so the snippet top remains constant for that boundary.
+      // i=1 => boundaries[0], i=2 => boundaries[1], etc.
+      const domainVal = boundaries[i - 1]; // anchor to the domain boundary
+      const snippetBarTopX = marginLeft + globalXScale(domainVal);
+      const snippetBarTopY = snippetBase + (snippetHeight - barLength);
+
+      // Now draw the line
+      svg.append("line")
+        .attr("class", "snippet-to-prism-line")
+        .attr("x1", snippetBarTopX)
+        .attr("y1", snippetBarTopY)
+        .attr("x2", prismCornerX)
+        .attr("y2", prismCornerY)
+        .attr("stroke", "red")
+        .attr("stroke-dasharray", "2,2");
+    }
+
     updateCharts();
     updateHoverZones();
-    updateConnectors();
   }
 
   // Hover Zones
@@ -777,6 +794,7 @@ export default function BarChartMagnitude({
         .tickSize(-subChartWidth + offset)
         .tickSizeOuter(0);
 
+      // short format
       if (useShortFormat) {
         xAxis = xAxis.tickFormat(d => {
           const val = nFormatter(d, 1);
