@@ -42,11 +42,8 @@ export default function BarChartMagnitude({
   xBins = xBins.slice();
   binSize = binSize.slice();
 
-  // -----------------------------------------------------------------------
-  // EXTRA SPACE: we changed this line to ensure the third snippet is visible
-  // -----------------------------------------------------------------------
-  const totalHeight = height + brushHeight + brushOffset + marginTop + marginBottom 
-                     + 120;  // <--- was +50, now +120 so there's enough room
+  // Extra space at bottom if you want to ensure snippet is visible
+  const totalHeight = height + brushHeight + brushOffset + marginTop + marginBottom + 50;
 
   // Prism geometry constants
   const scaleFactor = 0.666;
@@ -230,8 +227,11 @@ export default function BarChartMagnitude({
     });
 
   // *** NEW QUANTILE SNIPPET *** 
-  // A third snippet that uses a fraction-of-data axis from 0..1 => 0..100%.
-  // Placed right below the second snippet:
+  // a third snippet that uses a fraction-of-data axis from 0..1 => 0..100%,
+  // with ticks at 0%,10%,20%..100%. We also place red lines at the fraction of
+  // data below each domain boundary, and blue lines at 0.1,0.2,...0.9.
+
+  // Where to place this third snippet? Right below the log snippet:
   const quantSnippetBase = logSnippetBase + snippetHeight + 10;
 
   // The fraction-of-data axis: 0..1 -> 0..width
@@ -244,6 +244,7 @@ export default function BarChartMagnitude({
 
   // A quick helper: fractionBelow(x) => fraction of data < x
   function fractionBelow(value) {
+    // find index of 'value' in sortedData, then / length
     let idx = d3.bisectLeft(sortedData, value);
     return idx / sortedData.length;
   }
@@ -258,10 +259,10 @@ export default function BarChartMagnitude({
     .call(
       d3.axisBottom(fractionAxisScale)
         .tickValues(fractionTicks)
-        .tickFormat(d3.format(".0%")) // 0%, 10%, 20%...100%
+        .tickFormat(d3.format(".0%")) // 0%, 10%, 20%, ...
     );
 
-  // Blue lines at fraction 0.1..0.9
+  // Draw percentile lines at 0.1,0.2,...0.9
   quantAxisG.selectAll(".quant-percentile-bar")
     .data(d3.range(1, 10)) // i=1..9 => fraction i/10
     .enter()
@@ -299,6 +300,7 @@ export default function BarChartMagnitude({
     .attr("fill", "red")
     .style("font", "10px sans-serif")
     .text(d => {
+      // label it with short numeric
       let val = nFormatter(d, 1);
       return val.replace(/\.0(?=[GMK]|$)/, "");
     });
@@ -434,14 +436,6 @@ export default function BarChartMagnitude({
         stroke-dasharray: 2,1;
       }
     }
-    /* We'll reuse this class to draw cross-scale connection lines. */
-    .cross-scale-line {
-      stroke: blue;
-      stroke-dasharray: 3,3;
-      stroke-width: 1;
-      fill: none;
-      pointer-events: none; /* not interactive */
-    }
   `;
   document.head.appendChild(style);
 
@@ -462,6 +456,9 @@ export default function BarChartMagnitude({
   const content = g.append("g")
     .attr("clip-path", "url(#clipPlot)");
 
+  // ------------------------------------------------------------
+  //  Toggles / logic (unchanged)
+  // ------------------------------------------------------------
   let shrinkByDefault = false;
   let newPrism = true;
   let boundaryHover = new Array(xBins.length).fill(false);
@@ -591,6 +588,7 @@ export default function BarChartMagnitude({
   let brushDomainLeft = null;
   let brushDomainRight = null;
 
+  // Brush is above the chart
   const brush = d3.brushX()
     .extent([[0, -brushHeight - brushOffset], [width, -brushOffset]])
     .on("brush end", brushedChart);
@@ -969,66 +967,6 @@ export default function BarChartMagnitude({
 
     setBrushSelection();
     drawCustomGridLines();
-
-    //-----------------------------------------------------------------------
-    // ADDED: Connect the "blue cues" across all four levels:
-    //   1) main chart y=0
-    //   2) first snippet top
-    //   3) second snippet top
-    //   4) third snippet top
-    // with dashed lines for each percentile in "percentiles".
-    //-----------------------------------------------------------------------
-    svg.selectAll(".cross-scale-line").remove();
-
-    // Coordinates for snippet #1 top / bottom
-    const yFirstTop    = snippetBase + (snippetHeight - barLength);
-    const yFirstBottom = snippetBase + snippetHeight;
-    // snippet #2 top / bottom
-    const ySecondTop    = logSnippetBase + (snippetHeight - barLength);
-    const ySecondBottom = logSnippetBase + snippetHeight;
-    // snippet #3 top
-    const yThirdTop    = quantSnippetBase + (snippetHeight - barLength);
-
-    percentiles.forEach(d => {
-      // 1) x on main chart for the actual data value
-      const xMain = marginLeft + chartXPos(d);
-      const yMain = marginTop + height;  // main chart baseline
-
-      // 2) x on snippet #1 top
-      const xFirst = marginLeft + globalXScale(d);
-
-      // 3) x on snippet #2 top (log scale, clamped)
-      const xSecond = marginLeft + logXScale(Math.max(logMin, d));
-
-      // 4) x on snippet #3 top (quantile axis)
-      const frac = d3.bisectLeft(sortedData, d) / sortedData.length;
-      const xThird = marginLeft + fractionAxisScale(frac);
-
-      // Connect main chart y=0 -> snippet #1 top
-      svg.append("line")
-        .attr("class", "cross-scale-line")
-        .attr("x1", xMain)
-        .attr("y1", yMain)
-        .attr("x2", xFirst)
-        .attr("y2", yFirstTop);
-
-      // Connect snippet #1 bottom -> snippet #2 top
-      svg.append("line")
-        .attr("class", "cross-scale-line")
-        .attr("x1", xFirst)
-        .attr("y1", yFirstBottom)
-        .attr("x2", xSecond)
-        .attr("y2", ySecondTop);
-
-      // Connect snippet #2 bottom -> snippet #3 top
-      svg.append("line")
-        .attr("class", "cross-scale-line")
-        .attr("x1", xSecond)
-        .attr("y1", ySecondBottom)
-        .attr("x2", xThird)
-        .attr("y2", yThirdTop);
-    });
-    //-----------------------------------------------------------------------
   }
 
   applyMode();
